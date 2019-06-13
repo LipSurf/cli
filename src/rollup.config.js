@@ -1,25 +1,23 @@
-import html from 'rollup-plugin-html';
-import typescript from 'rollup-plugin-typescript2';
-import { terser } from "rollup-plugin-terser";
-import multiEntry from "rollup-plugin-multi-entry";
-import resolve from "rollup-plugin-node-resolve";
-import makeCS from './src/rollup-plugin-make-cs';
-import globby from 'globby';
+const html = require('rollup-plugin-html');
+const typescript = require('rollup-plugin-typescript2');
+const { terser } = require("rollup-plugin-terser");
+const multiEntry = require("rollup-plugin-multi-entry");
+const resolve = require("rollup-plugin-node-resolve");
+const makeCS = require('./rollup-plugin-make-cs');
+const globby = require('globby');
 
-import util from 'util';
-import child_process from 'child_process';
+const util = require('util');
+const child_process = require('child_process');
 const exec = util.promisify(child_process.exec);
-import fs from 'fs';
+const fs = require('fs');
 
 const PROD = process.env.NODE_ENV === 'production';
 const FOLDER_REGX = /^src\/(.*)\/.*$/;
 
-let exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/**/*.*.ts']).map(fileName => {
+module.exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/**/*.*.ts']).map(fileName => {
 	let regxRes = FOLDER_REGX.exec(fileName);
 	let folderName = regxRes ? regxRes[1] : null;
-	// if (folderName) {
-	// if (folderName && ['Date', 'Navigation', 'TextInput'].includes(folderName)) {
-	if (folderName && ['Navigation'].includes(folderName)) {
+	if (folderName) {
 		return [
 			{
 				input: `src/${folderName}/*.ts`,
@@ -29,7 +27,7 @@ let exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/**/*
 					typescript(),
 					{
 						/**
-						 * Trim down for matching and non-matching URL frontend CS 
+						 * Trim down for matching and non-matching URL frontend CS
 						 */
 						generateBundle(options, bundle) {
 							// async/await syntax messes shiz up
@@ -46,7 +44,7 @@ let exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/**/*
 								console.log(stdout);
 								const matchingCSFile = `${folderName}.matching.cs.js`;
 								bundle[matchingCSFile] = {
-									isAsset: true, 
+									isAsset: true,
 									fileName: matchingCSFile,
 									source: await fs.readFileSync(`dist/${matchingCSFile}`),
 								};
@@ -103,5 +101,3 @@ let exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/**/*
 		];
 	}
 }).filter(a => a));
-
-export default exports;
