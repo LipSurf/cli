@@ -34,11 +34,11 @@ module.exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/*
 							return new Promise(async cb => {
 								const k = Object.keys(bundle)[0];
 								const code = bundle[k].code;
-								// hack until jscodeshift supports node api
+								// hack until jscodeshift supports js api
 								const joinedFileName = `dist/${folderName}.joined.js`;
 								await fs.writeFileSync(joinedFileName, code);
 
-								const { stderr, stdout } = await exec(`node --experimental-modules ./node_modules/jscodeshift/bin/jscodeshift.sh -v 2 -t ./transforms/split.ts ${joinedFileName}`);
+								const { stderr, stdout } = await exec(`node --experimental-modules ./node_modules/jscodeshift/bin/jscodeshift.sh -v 2 -t ./node_modules/lipsurf-cli/transforms/split.ts ${joinedFileName}`);
 								if (stderr)
 									console.error(stderr);
 								console.log(stdout);

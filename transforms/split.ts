@@ -21,6 +21,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { get } from 'lodash';
+import * as tmp from 'tmp';
 import { JSCodeshift, Identifier, Literal, Property, ObjectProperty, ObjectExpression, ArrowFunctionExpression } from 'jscodeshift';
 
 interface FileInfo {
@@ -50,13 +51,20 @@ module.exports = async function (fileInfo: FileInfo, api: JSCodeshift, options) 
         .at(0)
         ;
 
-    // dynamic analysis
+    // dynamic analysis, pretty hacky
     let dynModText = fs.readFileSync(`./${fileInfo.path}`, 'utf8');
-    const dynFileName = `./dist/${plugin}.imported.js`;
-    dynModText = 'const PluginBase = {languages: {}, util: {}};' + dynModText;
-    fs.writeFileSync(dynFileName, dynModText);
-    let dynMod = await import(`.${dynFileName}`);
-
+    // mock the PluginBase object
+    dynModText = `const PluginBase = (() => {
+        const fn = () => PluginBase;
+        return new Proxy(Object.freeze(fn), {
+            get: (o, key) => PluginBase
+        });
+    })()` + dynModText;
+    let tmpFile = tmp.fileSync({postfix: '.mjs'});
+    fs.writeFileSync(tmpFile.fd, dynModText);
+    console.log('tmp file name', tmpFile.name)
+    // @ts-ignore
+    let dynMod = await import(tmpFile.name);
 
     const commandsColl = pluginDef
         .find(j.Property, { key: { name: `commands` } })
@@ -122,9 +130,9 @@ module.exports = async function (fileInfo: FileInfo, api: JSCodeshift, options) 
     dynMatchProp.replaceWith(p => {
         // get dynamic match commands in other langs
         const cmdName = p.parentPath.value.filter(x => x.key.name === 'name')[0].value.value;
-        const langs = Object.keys(dynMod.default.default.languages);
+        const langs = Object.keys(dynMod.default.languages);
         const addLangs = langs.map(lang => {
-            let matchFn = get(dynMod.default.default.languages, `${lang}.commands.${cmdName}.match.fn`)
+            let matchFn = get(dynMod.default.languages, `${lang}.commands.${cmdName}.match.fn`)
             if (matchFn) {
                 let parsed: ArrowFunctionExpression = j(matchFn.toString())
                     .find(j.ArrowFunctionExpression)

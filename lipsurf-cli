@@ -25,12 +25,13 @@ const cli = meow(`
 
 async function build(flags) {
     const watch = flags.watch;
-    console.dir(config);
     if (watch) {
       rollup.watch(config);
     } else {
       for (let conf of config) {
-        await rollup.rollup(conf)
+        const bundle = await rollup.rollup(conf)
+        await bundle.generate(conf);
+        await bundle.write(conf);
       }
       console.log(`Done building.`);
     }
