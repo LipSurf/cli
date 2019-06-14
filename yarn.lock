@@ -130,6 +130,14 @@
     "@types/minimatch" "*"
     "@types/node" "*"
 
+"@types/jscodeshift@^0.6.0":
+  version "0.6.0"
+  resolved "https://registry.yarnpkg.com/@types/jscodeshift/-/jscodeshift-0.6.0.tgz#b3c59f9d2c863385dc91fee54fb98e1a54646e0c"
+  integrity sha512-LmkndrS2aed1H7+goMB9zxqpcL5zyObVZzR9uO8VmyPfyrf2NfVPZnOU9n3p2bIZ/6rW3alKldQpxatHVFz7Gw==
+  dependencies:
+    ast-types "0.12.1"
+    recast "0.17.2"
+
 "@types/minimatch@*":
   version "3.0.3"
   resolved "https://registry.yarnpkg.com/@types/minimatch/-/minimatch-3.0.3.tgz#3dca0e3f33b200fc7d1139c0cd96c1268cadfd9d"
@@ -230,6 +238,11 @@ assign-symbols@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/assign-symbols/-/assign-symbols-1.0.0.tgz#59667f41fadd4f20ccbc2bb96b8d4f7f78ec0367"
   integrity sha1-WWZ/QfrdTyDMvCu5a41Pf3jsA2c=
+
+ast-types@0.12.1:
+  version "0.12.1"
+  resolved "https://registry.yarnpkg.com/ast-types/-/ast-types-0.12.1.tgz#55d3737a8a68e1ccde131067005ce7ee3dd42b99"
+  integrity sha512-H2izJAyT2xwew4TxShpmxe6f9R5hHgJQy1QloLiUC2yrJMtyraBWNJL7903rpeCY9keNUipORR/zIUC2XcYKng==
 
 async-array-reduce@^0.2.1:
   version "0.2.1"
@@ -1549,6 +1562,11 @@ posix-character-classes@^0.1.0:
   resolved "https://registry.yarnpkg.com/posix-character-classes/-/posix-character-classes-0.1.1.tgz#01eac0fe3b5af71a2a6c02feabb8c1fef7e00eab"
   integrity sha1-AerA/jta9xoqbAL+q7jB/vfgDqs=
 
+private@~0.1.5:
+  version "0.1.8"
+  resolved "https://registry.yarnpkg.com/private/-/private-0.1.8.tgz#2381edb3689f7a53d653190060fcf822d2f368ff"
+  integrity sha512-VvivMrbvd2nKkiG38qjULzlc+4Vx4wm/whI9pQD35YrARNnhxeiRktSOhSukRLFNlzg6Br/cJPet5J/u19r/mg==
+
 process-nextick-args@~2.0.0:
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/process-nextick-args/-/process-nextick-args-2.0.0.tgz#a37d732f4271b4ab1ad070d35508e8290788ffaa"
@@ -1593,6 +1611,16 @@ readable-stream@^2.0.1, readable-stream@^2.3.0, readable-stream@^2.3.5:
     safe-buffer "~5.1.1"
     string_decoder "~1.1.1"
     util-deprecate "~1.0.1"
+
+recast@0.17.2:
+  version "0.17.2"
+  resolved "https://registry.yarnpkg.com/recast/-/recast-0.17.2.tgz#f18f18cf20bf3fad4522621a7f9c2ada37276814"
+  integrity sha512-YHFvn4rBXl8eIjALjUiOV/AP3xFpyGNGNHDw9mAncAWuIdgnBKjbZQ9+P3VlsKcNaNapRVFlTEX1dvDRlYwyxg==
+  dependencies:
+    ast-types "0.12.1"
+    esprima "~4.0.0"
+    private "~0.1.5"
+    source-map "~0.6.1"
 
 redeyed@~2.1.0:
   version "2.1.1"

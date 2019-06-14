@@ -24,7 +24,9 @@ module.exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/*
 				treeshake: false,
 				plugins: [
 					multiEntry(),
-					typescript(),
+					typescript({
+						tsconfig: "../plugins.tsconfig.json",
+					}),
 					{
 						/**
 						 * Trim down for matching and non-matching URL frontend CS

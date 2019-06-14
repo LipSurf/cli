@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "author": "mikob",
   "bin": {
-    "lipsurf-cli": "./bin/run"
+    "lipsurf-cli": "./bin/run",
+    "debug:transform": "node --inspect-brk --experimental-modules ./node_modules/jscodeshift/bin/jscodeshift.sh --run-in-band -c 1 -v 2 -t ./transforms/split.ts dist/Navigation.joined.js"
   },
   "bugs": "https://github.com/LipSurf/lipsurf-cli/issues",
   "dependencies": {
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@oclif/dev-cli": "^1",
+    "@types/jscodeshift": "^0.6.0",
     "@types/node": "^10",
     "globby": "^9.2.0",
     "ts-node": "^8",
