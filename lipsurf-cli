@@ -1,0 +1,40 @@
+#!/usr/bin/env node
+'use strict';
+const meow = require('meow');
+const rollup = require('rollup');
+const config = require('./rollup.config.js');
+
+
+(async () => {
+const cli = meow(`
+	Usage
+	  $ lipsurf-cli build
+
+	Options
+	  --watch
+
+	Examples
+	  $ lipsurf-cli build --watch
+`, {
+	flags: {
+		watch: {
+			type: 'boolean',
+		}
+	}
+});
+
+async function build(flags) {
+    const watch = flags.watch;
+    console.dir(config);
+    if (watch) {
+      rollup.watch(config);
+    } else {
+      for (let conf of config) {
+        await rollup.rollup(conf)
+      }
+      console.log(`Done building.`);
+    }
+}
+
+await build(cli.flags);
+})();
