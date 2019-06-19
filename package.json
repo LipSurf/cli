@@ -6,7 +6,7 @@
   },
   "author": "Miko Borys",
   "dependencies": {
-    "jscodeshift": "https://github.com/mikob/jscodeshift",
+    "jscodeshift": "https://github.com/mikob/jscodeshift#js-api",
     "meow": "^5.0.0",
     "rollup": "^1.15.3",
     "rollup-plugin-html": "^0.2.1",

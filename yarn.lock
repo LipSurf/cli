@@ -1148,9 +1148,9 @@ dir-glob@^2.2.2:
     path-type "^3.0.0"
 
 electron-to-chromium@^1.3.150:
-  version "1.3.161"
-  resolved "https://registry.yarnpkg.com/electron-to-chromium/-/electron-to-chromium-1.3.161.tgz#48cb3de7a53d07c1ce654e8bc6e3f6b602f1ee3c"
-  integrity sha512-i8cuS1zf7TW2t/NrfiaF8amTggCH4yLRe7Pirdf6gVDESP146jXO9NXttM8bJk1aupwA1NVMoaikBSbnTHgZGA==
+  version "1.3.164"
+  resolved "https://registry.yarnpkg.com/electron-to-chromium/-/electron-to-chromium-1.3.164.tgz#8680b875577882c1572c42218d53fa9ba5f71d5d"
+  integrity sha512-VLlalqUeduN4+fayVtRZvGP2Hl1WrRxlwzh2XVVMJym3IFrQUS29BFQ1GP/BxOJXJI1OFCrJ5BnFEsAe8NHtOg==
 
 error-ex@^1.3.1:
   version "1.3.2"
@@ -1657,9 +1657,9 @@ js-levenshtein@^1.1.3:
   resolved "https://registry.yarnpkg.com/js-tokens/-/js-tokens-4.0.0.tgz#19203fb59991df98e3a287050d4647cdeaf32499"
   integrity sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==
 
-"jscodeshift@https://github.com/mikob/jscodeshift":
+"jscodeshift@https://github.com/mikob/jscodeshift#js-api":
   version "0.6.4"
-  resolved "https://github.com/mikob/jscodeshift#2df28deccfa2127a59def0da4066509a1d6da1cc"
+  resolved "https://github.com/mikob/jscodeshift#c47faf917cf84bc60c560d828b19076e492f488d"
   dependencies:
     "@babel/core" "^7.1.6"
     "@babel/parser" "^7.1.6"

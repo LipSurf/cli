@@ -2,8 +2,10 @@
 * Split the plugin into a frontend/backend. Frontend needs to be
 * loaded on every page, so it should be lightweight. 
 * 
-* We operate partially on the eval'd plugin js because that allows for better 
-* correctness/simplicity for computed/dynamic values 
+* We don't operate on the eval'd plugin js because that got complicated
+* to import here since async import is not handled natively yet.
+* Later, we might explore this possibility again for correctness/simplicity
+* for computed/dynamic top-level values 
 * (eg. Plugin.languages.ru = ..., later Plugin.languages.ru.commands = (morphed))
 * we don't operate solely on eval'd js, because it wouldn't allow certain things
 * like abstracting away PluginBase with {...PluginBase, { ...(plugin code)}}
@@ -21,8 +23,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { get } from 'lodash';
-import * as tmp from 'tmp';
-import { JSCodeshift, Identifier, Literal, Property, ObjectProperty, ObjectExpression, ArrowFunctionExpression } from 'jscodeshift';
+import { JSCodeshift, Identifier, Literal, Property, ObjectProperty, ObjectExpression, } from 'jscodeshift';
 
 interface FileInfo {
     path: string;
@@ -32,7 +33,7 @@ interface FileInfo {
 const COMMAND_PROPS_TO_REMOVE = ['fn', 'delay', 'description', 'test', 'global', 'context'];
 const PLUGIN_PROPS_TO_REMOVE = ['description', 'homophones', 'version', 'authors', 'match'];
 
-module.exports = async function (fileInfo: FileInfo, api: JSCodeshift, options) {
+module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
     const pPath = path.parse(fileInfo.path);
     const plugin = pPath.name.split('.')[0];
     const j: JSCodeshift = api.jscodeshift;
@@ -50,21 +51,6 @@ module.exports = async function (fileInfo: FileInfo, api: JSCodeshift, options) 
         .findVariableDeclarators(exportName)
         .at(0)
         ;
-
-    // dynamic analysis, pretty hacky
-    let dynModText = fs.readFileSync(`./${fileInfo.path}`, 'utf8');
-    // mock the PluginBase object
-    dynModText = `const PluginBase = (() => {
-        const fn = () => PluginBase;
-        return new Proxy(Object.freeze(fn), {
-            get: (o, key) => PluginBase
-        });
-    })()` + dynModText;
-    let tmpFile = tmp.fileSync({postfix: '.mjs'});
-    fs.writeFileSync(tmpFile.fd, dynModText);
-    console.log('tmp file name', tmpFile.name)
-    // @ts-ignore
-    let dynMod = await import(tmpFile.name);
 
     const commandsColl = pluginDef
         .find(j.Property, { key: { name: `commands` } })
@@ -113,33 +99,31 @@ module.exports = async function (fileInfo: FileInfo, api: JSCodeshift, options) 
         .remove()
         ;
     
-    const otherLangExtensions = matchingCSAST
+    const otherLangs = matchingCSAST
         .find(j.MemberExpression, { object: { object: { name: plugin }, property: {name: 'languages' } } })
-        ;
-    
-    const otherLangs = otherLangExtensions
         .nodes()
         .map(x => (<Identifier>x.property).name)
     
-    const otherLangCommands = otherLangExtensions
-        .find(j.Property, { key: { name: 'commands' } })
-        ;
-
+    const langCmdsByLang = otherLangs.reduce((memo, lang) => 
+        ({...memo, 
+            ...{[lang]: matchingCSAST
+                .find(j.AssignmentExpression, { right: { type: 'ObjectExpression' }, left: { property: {name: lang}, type: 'MemberExpression', object: { property: { name: 'languages' }} } })
+                .find(j.Property, { key: { name: 'commands' } })
+            }
+        }), {});
+    
     // make dyn. match functions i18n friendly
     // mixin the other languages
     dynMatchProp.replaceWith(p => {
         // get dynamic match commands in other langs
         const cmdName = p.parentPath.value.filter(x => x.key.name === 'name')[0].value.value;
-        const langs = Object.keys(dynMod.default.languages);
-        const addLangs = langs.map(lang => {
-            let matchFn = get(dynMod.default.languages, `${lang}.commands.${cmdName}.match.fn`)
-            if (matchFn) {
-                let parsed: ArrowFunctionExpression = j(matchFn.toString())
-                    .find(j.ArrowFunctionExpression)
-                    .get(0)
-                    .node
-                    ;
-                return j.property('init', j.identifier(lang), parsed);
+        const addLangs = otherLangs.map(lang => {
+            let matchFn = langCmdsByLang[lang]
+                .find(j.Property, {key: {value: cmdName}})
+                .find(j.Property, {key: {name: 'fn'}})
+                ;
+            if (matchFn.length) {
+                return j.property('init', j.identifier(lang), matchFn.get(0).node.value);
             }
         }).filter(x => x);
         const matchObj = [j.property('init', j.identifier("en"), (<Property>(<ObjectExpression>p.value.value).properties[0]).value), ...addLangs];

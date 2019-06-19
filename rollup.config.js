@@ -7,8 +7,10 @@ const makeCS = require('./rollup-plugin-make-cs');
 const globby = require('globby');
 
 const util = require('util');
+const path = require('path');
 const child_process = require('child_process');
 const exec = util.promisify(child_process.exec);
+const JSCodeShift = require('jscodeshift').run;
 const fs = require('fs');
 
 const PROD = process.env.NODE_ENV === 'production';
@@ -35,20 +37,29 @@ module.exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/*
 								const k = Object.keys(bundle)[0];
 								const code = bundle[k].code;
 								// hack until jscodeshift supports js api
-								const joinedFileName = `dist/${folderName}.joined.js`;
+								const joinedFileName = path.resolve(`dist/${folderName}.joined.mjs`);
 								await fs.writeFileSync(joinedFileName, code);
+								
+								let res = await JSCodeShift('/home/mikob/workspace/lipsurf/chrome-extension/plugins/node_modules/lipsurf-cli/transforms/split.ts', [joinedFileName], {
+									transform: './node_modules/lipsurf-cli/transforms/split.ts',
+									verbose: 2,
 
-								const { stderr, stdout } = await exec(`node --experimental-modules ./node_modules/jscodeshift/bin/jscodeshift.sh -v 2 -t ./node_modules/lipsurf-cli/transforms/split.ts ${joinedFileName}`);
-								if (stderr)
-									console.error(stderr);
-								console.log(stdout);
+									dry: false,
+									print: false,
+									babel: true,
+									extensions: 'js,mjs',
+									ignorePattern: [],
+									ignoreConfig: [],
+									silent: false,
+									parser: 'babel',
+									stdin: false
+								});
 								const matchingCSFile = `${folderName}.matching.cs.js`;
 								bundle[matchingCSFile] = {
 									isAsset: true,
 									fileName: matchingCSFile,
 									source: await fs.readFileSync(`dist/${matchingCSFile}`),
 								};
-								console.log('done with generate bundle');
 								cb();
 							});
 						}
