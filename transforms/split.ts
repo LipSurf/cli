@@ -37,7 +37,9 @@ module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
     const pPath = path.parse(fileInfo.path);
     const plugin = pPath.name.split('.')[0];
     const j: JSCodeshift = api.jscodeshift;
-    // const ast = j(fileInfo.source);
+
+    makeBackend(fileInfo, api, options);
+
     const matchingCSAST = j(fileInfo.source);
     const exportName = matchingCSAST
             .find(j.ExportDefaultDeclaration)
@@ -149,5 +151,19 @@ module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
         .find(j.ExpressionStatement, { expression: { left: { object: { object: { name: plugin }, property: {name: 'languages' } } } } })
         .remove()
 
+    // matching cs
     fs.writeFileSync(`dist/${plugin}.matching.cs.js`, `${matchProp.toSource()}`);
 };
+
+/**
+ * 
+ */
+function makeBackend(fileInfo: FileInfo, api: JSCodeshift, options) {
+    const pPath = path.parse(fileInfo.path);
+    const plugin = pPath.name.split('.')[0];
+    const j: JSCodeshift = api.jscodeshift;
+
+    const backendAST = j(fileInfo.source);
+    console.log('writing backend');
+    fs.writeFileSync(`dist/${plugin}.backend.js`, `${backendAST.toSource()}`);
+}

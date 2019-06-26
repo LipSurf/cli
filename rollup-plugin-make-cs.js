@@ -1,6 +1,5 @@
-const fs = require('fs');
-
 const importPluginBase = `import PluginBase from 'chrome-extension://lnnmjmalakahagblkkcnjkoaihlfglon/dist/modules/plugin-base.mjs';`;
+const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://lnnmjmalakahagblkkcnjkoaihlfglon/dist/modules/extension-util.mjs';`;
 const SPLITTER = '\vLS-SPLIT';
 
 module.exports = function makeCS() {
@@ -11,7 +10,7 @@ module.exports = function makeCS() {
             const keys = Object.keys(bundle);
             const matchingFilename = keys.find(x => x.includes('.matching.'));
             const plugin = matchingFilename.split('.')[0];
-            const backendFilename = `${plugin}.backend.js`;
+            const backendFilename = `${plugin}.backend.resolved.js`;
 
             const backendFile = bundle[backendFilename].code;
             const matchingCSFile = bundle[matchingFilename].code;
@@ -20,6 +19,7 @@ module.exports = function makeCS() {
             const matchingCS = `allPlugins.${plugin} = (() => { ${matchingCSFile.toString().replace('export default', 'return')} })()`;
 
             bundle[matchingFilename].code = importPluginBase
+                    + importExtensionUtil
                     + backendFile
                     + SPLITTER
                     + matchingCS

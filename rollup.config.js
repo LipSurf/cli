@@ -3,20 +3,18 @@ const typescript = require('rollup-plugin-typescript2');
 const { terser } = require("rollup-plugin-terser");
 const multiEntry = require("rollup-plugin-multi-entry");
 const resolve = require("rollup-plugin-node-resolve");
-const makeCS = require('./rollup-plugin-make-cs');
 const globby = require('globby');
-
-const util = require('util');
-const path = require('path');
-const child_process = require('child_process');
-const exec = util.promisify(child_process.exec);
-const JSCodeShift = require('jscodeshift').run;
+const commonjs = require('rollup-plugin-commonjs');
 const fs = require('fs');
+const JSCodeShift = require('jscodeshift').run;
+
+const makeCS = require('./rollup-plugin-make-cs');
 
 const PROD = process.env.NODE_ENV === 'production';
 const FOLDER_REGX = /^src\/(.*)\/.*$/;
 
-module.exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/**/*.*.ts']).map(fileName => {
+module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!src/@types', '!src/*/*.*.ts']).map(fileName => {
+	console.log('doing ' + fileName)
 	let regxRes = FOLDER_REGX.exec(fileName);
 	let folderName = regxRes ? regxRes[1] : null;
 	if (folderName) {
@@ -25,62 +23,73 @@ module.exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/*
 				input: `src/${folderName}/*.ts`,
 				treeshake: false,
 				plugins: [
-					multiEntry(),
 					typescript(),
+					multiEntry(),
+				],
+				output: {
+					// garbage since we use jscodeshift on the cmd line
+					file: `dist/${folderName}.joined.mjs`,
+					format: 'esm',
+				}
+			},
+			{
+				input: `dist/${folderName}.joined.mjs`,
+				treeshake: false,
+				plugins: [
 					{
 						/**
 						 * Trim down for matching and non-matching URL frontend CS
 						 */
-						generateBundle(options, bundle) {
-							// async/await syntax messes shiz up
-							return new Promise(async cb => {
-								const k = Object.keys(bundle)[0];
-								const code = bundle[k].code;
-								// hack until jscodeshift supports js api
-								const joinedFileName = path.resolve(`dist/${folderName}.joined.mjs`);
-								await fs.writeFileSync(joinedFileName, code);
-								
-								let res = await JSCodeShift('/home/mikob/workspace/lipsurf/chrome-extension/plugins/node_modules/lipsurf-cli/transforms/split.ts', [joinedFileName], {
-									transform: './node_modules/lipsurf-cli/transforms/split.ts',
-									verbose: 2,
+						generateBundle(options, bundle, isWrite) {
+							if (isWrite) {
+								// async/await syntax messes shiz up
+								return new Promise(async cb => {
+									// make this the node_modules path instead
+									let res = await JSCodeShift('/home/mikob/workspace/lipsurf/lipsurf-cli/transforms/split.ts', [`dist/${folderName}.joined.mjs`], {
+										transform: './node_modules/lipsurf-cli/transforms/split.ts',
+										verbose: 2,
 
-									dry: false,
-									print: false,
-									babel: true,
-									extensions: 'js,mjs',
-									ignorePattern: [],
-									ignoreConfig: [],
-									silent: false,
-									parser: 'babel',
-									stdin: false
+										dry: false,
+										print: false,
+										babel: true,
+										extensions: 'js,mjs',
+										ignorePattern: [],
+										ignoreConfig: [],
+										silent: false,
+										parser: 'babel',
+										stdin: false
+									});
+									for (let part of ['matching.cs', 'backend']) {
+										const filePartName = `${folderName}.${part}.js`;
+										bundle[filePartName] = {
+											isAsset: true,
+											fileName: filePartName,
+											source: await fs.readFileSync(`dist/${filePartName}`),
+										};
+									}
+									cb();
 								});
-								const matchingCSFile = `${folderName}.matching.cs.js`;
-								bundle[matchingCSFile] = {
-									isAsset: true,
-									fileName: matchingCSFile,
-									source: await fs.readFileSync(`dist/${matchingCSFile}`),
-								};
-								cb();
-							});
+							}
 						}
 					}
 				],
 				output: {
 					// garbage since we use jscodeshift on the cmd line
-					file: `dist/${folderName}.backend.js`,
+					file: `/tmp/${folderName}.garbage.js`,
 					format: 'esm',
 				}
 			},
-			{
+			// to prevent chunking external deps, do the files one by one :( (rollup shortcoming)
+			...[`dist/${folderName}.backend.js`, `dist/${folderName}.matching.cs.js`].map(filename => ({
 				// don't use globby.sync because it resolves before files are ready
-				input: [`dist/${folderName}.matching.cs.js`, `dist/${folderName}.backend.js`],
+				input: filename,
 				treeshake: {
 					moduleSideEffects: false,
 					pureExternalModules: true,
 				},
-				external: ["lodash-es"],
 				plugins: [
 					resolve(),
+					commonjs(),
 					html({
 						include: '**/*.html',
 						htmlMinifierOptions: {
@@ -101,14 +110,22 @@ module.exports = [].concat(...globby.sync(['src/**/*.ts', '!src/@types', '!src/*
 							]
 						}
 					}),
+				],
+				output: {
+					format: 'esm',
+					file: `${filename.split('.js')[0]}.resolved.js`
+				}
+			})),
+			{
+				input: [`dist/${folderName}.backend.resolved.js`, `dist/${folderName}.matching.cs.resolved.js`],
+				plugins: [
 					makeCS(),
 				],
 				output: {
 					format: 'esm',
 					dir: 'dist',
-					// file: `dist/${folderName}.ls`
 				}
-			},
+			}
 		];
 	}
 }).filter(a => a));
