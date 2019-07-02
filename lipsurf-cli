@@ -26,7 +26,18 @@ const cli = meow(`
 async function build(flags) {
     const watch = flags.watch;
     if (watch) {
-      rollup.watch(config);
+      const watcher = rollup.watch(config);
+      watcher.on('event', event => {
+        switch (event.code) {
+          case 'END':
+            console.log('Done building. Watching...');
+            break;
+          case 'ERROR':
+          case 'FATAL':
+            console.log(event.code, event.error);
+            break;
+        }
+      });
     } else {
       for (let conf of config) {
         const bundle = await rollup.rollup(conf)
