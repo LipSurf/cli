@@ -30,8 +30,8 @@ interface FileInfo {
     source: string;
 }
 
-const COMMAND_PROPS_TO_REMOVE = ['fn', 'delay', 'description', 'test', 'global', 'context'];
-const PLUGIN_PROPS_TO_REMOVE = ['description', 'homophones', 'version', 'authors', 'match'];
+const COMMAND_PROPS_TO_REMOVE = ['fn', 'delay', 'description', 'test', 'global', 'context', 'minConfidence', 'enterContext'];
+const PLUGIN_PROPS_TO_REMOVE = ['description', 'homophones', 'version', 'authors', 'match', 'plan', 'apiVersion', 'contexts', 'niceName'];
 
 module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
     const pPath = path.parse(fileInfo.path);
@@ -52,6 +52,15 @@ module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
     const pluginDef = matchingCSAST
         .findVariableDeclarators(exportName)
         .at(0)
+        ;
+
+    // remove simple props from Plugin
+    pluginDef
+        .find(j.Property)
+        // restrict to the right depth
+        .filter(x => pluginDef.get(0).parentPath.value.init.properties[1].argument === x.parentPath.parentPath.value)
+        .filter(x => PLUGIN_PROPS_TO_REMOVE.includes((<Identifier>x.node.key).name))
+        .remove()
         ;
 
     const commandsColl = pluginDef

@@ -48,6 +48,7 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 									let res = await JSCodeShift('/home/mikob/workspace/lipsurf/lipsurf-cli/transforms/split.ts', [`dist/${folderName}.joined.mjs`], {
 										transform: './node_modules/lipsurf-cli/transforms/split.ts',
 										verbose: 2,
+										runInBand: true,
 
 										dry: false,
 										print: false,
