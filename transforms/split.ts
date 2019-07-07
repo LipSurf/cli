@@ -23,7 +23,8 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { get } from 'lodash';
-import { JSCodeshift, Identifier, Literal, Property, ObjectProperty, ObjectExpression, } from 'jscodeshift';
+import { JSCodeshift, Identifier, Literal, Property, ObjectProperty, ObjectExpression, VariableDeclarator, ArrayExpression, } from 'jscodeshift';
+import { Collection } from 'jscodeshift/src/Collection';
 
 interface FileInfo {
     path: string;
@@ -35,65 +36,60 @@ const PLUGIN_PROPS_TO_REMOVE = ['description', 'homophones', 'version', 'authors
 
 module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
     const pPath = path.parse(fileInfo.path);
-    const plugin = pPath.name.split('.')[0];
+    const pluginId = pPath.name.split('.')[0];
     const j: JSCodeshift = api.jscodeshift;
 
     makeBackend(fileInfo, api, options);
 
-    const matchingCSAST = j(fileInfo.source);
-    const exportName = matchingCSAST
+    // matching cs
+    fs.writeFileSync(`dist/${pluginId}.matching.cs.js`, makeMatchingCS(pluginId, j, fileInfo.source));
+    fs.writeFileSync(`dist/${pluginId}.nonmatching.cs.js`, makeNonMatchingCS(pluginId, j, fileInfo.source));
+};
+
+function getPluginDef(j: JSCodeshift, ast: Collection<any>): Collection<VariableDeclarator> {
+    const exportName = ast
             .find(j.ExportDefaultDeclaration)
             .get(0)
             .node
             .declaration
             .name
             ;
-
-    const pluginDef = matchingCSAST
+    return ast
         .findVariableDeclarators(exportName)
         .at(0)
         ;
+}
 
-    // remove simple props from Plugin
-    pluginDef
-        .find(j.Property)
-        // restrict to the right depth
-        .filter(x => pluginDef.get(0).parentPath.value.init.properties[1].argument === x.parentPath.parentPath.value)
-        .filter(x => PLUGIN_PROPS_TO_REMOVE.includes((<Identifier>x.node.key).name))
-        .remove()
-        ;
-
-    const commandsColl = pluginDef
+function getCommandsColl(j: JSCodeshift, pluginDef: Collection<VariableDeclarator>): Collection<ArrayExpression> {
+    return pluginDef
         .find(j.Property, { key: { name: `commands` } })
         .find(j.ArrayExpression)
         .at(0)
         ;
+}
 
-    const commandsObjs = commandsColl
-        .find(j.ObjectExpression)
+function getCommandsObjs(j: JSCodeshift, commandsColl: Collection<ArrayExpression>): Collection<ObjectExpression> {
+    return commandsColl.find(j.ObjectExpression)
         // restrict to the correct depth
         .filter(x => x.parentPath.parentPath === commandsColl.get(0).parentPath)
         ;
+}
 
-    const commandsProps = commandsObjs
-        .map(cmdPath =>
-            j(cmdPath)
-                .find(j.Property)
-                .filter(p => get(p, 'parentPath.parentPath.parentPath.parentPath.parentPath.value.key.name') === 'commands')
-                .paths()
-            , j.Property)
-        ;
+function getCommandsProps(j: JSCodeshift, commandsObjs: Collection<ObjectExpression>): Collection<Property> {
+    return commandsObjs.map(cmdPath =>
+        j(cmdPath)
+            .find(j.Property)
+            .filter(p => get(p, 'parentPath.parentPath.parentPath.parentPath.parentPath.value.key.name') === 'commands')
+            .paths()
+        , j.Property)
+    ;
+}
 
-    // remove simple props from commands
-    commandsProps
-        .filter(x => COMMAND_PROPS_TO_REMOVE.includes((<Identifier>x.node.key).name))
-        .remove()
-        ;
-
+function transformMatchStrs(j: JSCodeshift, pluginId: string, csAST: Collection<any>, commandsProps: Collection<Property>) {
     const matchProp = commandsProps
         .filter(x => x.node.type === 'Property' && (<Identifier>x.node.key).name == 'match')
         ;
-
+    
     // remove matchStrs but not dynamic match fns
     matchProp
         .filter(x => x.node.value.type === 'Literal' || x.node.value.type === 'ArrayExpression')
@@ -110,14 +106,14 @@ module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
         .remove()
         ;
     
-    const otherLangs = matchingCSAST
-        .find(j.MemberExpression, { object: { object: { name: plugin }, property: {name: 'languages' } } })
+    const otherLangs = csAST
+        .find(j.MemberExpression, { object: { object: { name: pluginId }, property: { name: 'languages' } } })
         .nodes()
         .map(x => (<Identifier>x.property).name)
     
     const langCmdsByLang = otherLangs.reduce((memo, lang) => 
         ({...memo, 
-            ...{[lang]: matchingCSAST
+            ...{[lang]: csAST
                 .find(j.AssignmentExpression, { right: { type: 'ObjectExpression' }, left: { property: {name: lang}, type: 'MemberExpression', object: { property: { name: 'languages' }} } })
                 .find(j.Property, { key: { name: 'commands' } })
             }
@@ -141,28 +137,113 @@ module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
         return j.property('init', j.identifier('match'), j.objectExpression(matchObj));
     });
     
-    // cmds array to object with cmd names as keys
-    const cmdsByName = commandsObjs.nodes().map(cmdPath => {
+}
+
+// cmds array to object with cmd names as keys
+function commandArrayToObject(j: JSCodeshift, commandsObjs: Collection<ObjectExpression>, commandsColl: Collection<ArrayExpression>) {
+    // filter out already removed nodes
+    const cmdsByName = commandsObjs.nodes().filter(x => x).map(cmdPath => {
         let nameProp = <ObjectProperty>cmdPath.properties.find(x => (<Identifier>(<ObjectProperty>x).key).name === 'name');
         let name = <string>(<Literal>(nameProp).value).value;
         let otherProps = cmdPath.properties.filter(x => (<Identifier>(<ObjectProperty>x).key).name !== 'name');
         return j.property('init', j.literal(name), j.objectExpression(otherProps));
     });
     commandsColl.replaceWith(j.objectExpression(cmdsByName));
+}
 
+function removeSimplePluginProps(j: JSCodeshift, pluginDef: Collection<VariableDeclarator>) {
+    // remove simple props from Plugin
+    return pluginDef
+        .find(j.Property)
+        // restrict to the right depth
+        .filter(x => pluginDef.get(0).parentPath.value.init.properties[1].argument === x.parentPath.parentPath.value)
+        .filter(x => PLUGIN_PROPS_TO_REMOVE.includes((<Identifier>x.node.key).name))
+        .remove()
+        ;
+
+}
+
+// TODO: needs to not look at pluginId... but whatever the plugin was imported as since it's imported as a default it can have any name
+function removeLanguageCode(j: JSCodeshift, pluginId: string, ast: Collection<any>) {
+    // remove the languages code since it's been merged in dynMatch already
+    return ast
+        .find(j.ExpressionStatement, { expression: { left: { object: { object: { name: pluginId }, property: {name: 'languages' } } } } })
+        .remove()
+
+}
+function removeSimpleCommandProps(j: JSCodeshift, commandsProps: Collection<Property>) {
+    return commandsProps
+        .filter(x => COMMAND_PROPS_TO_REMOVE.includes((<Identifier>x.node.key).name))
+        .remove()
+        ;
+}
+
+function replaceNonDefaultExports(j: JSCodeshift, ast: Collection<any>) {
     // replace non-default exports (they screw up eval)
-    matchingCSAST
+    return ast
         .find(j.ExportNamedDeclaration)
         .replaceWith(x => x.value.declaration)
 
-    // remove the languages code since it's been merged in dynMatch already
-    matchingCSAST
-        .find(j.ExpressionStatement, { expression: { left: { object: { object: { name: plugin }, property: {name: 'languages' } } } } })
+}
+
+function makeNonMatchingCS(pluginId: string, j: JSCodeshift, source: string): string {
+    let csAST = j(source);
+    const pluginDef = getPluginDef(j, csAST);
+    const commandsColl = getCommandsColl(j, pluginDef);
+    const commandsObjs = getCommandsObjs(j, commandsColl);
+
+    // remove non global commands
+    commandsObjs
+        .filter(cmdObj => {
+            const globalProp = <Property>cmdObj.value.properties.find((prop: Property) => (<Identifier>prop.key).name === 'global');
+            if (!globalProp || (<Literal>globalProp.value).value === false)
+                return true;
+        })
         .remove()
 
-    // matching cs
-    fs.writeFileSync(`dist/${plugin}.matching.cs.js`, `${matchProp.toSource()}`);
-};
+    const commandsProps = getCommandsProps(j, commandsObjs);
+
+    // if there's no commands, this plugin can be blank
+    if (commandsProps.size() === 0)
+        return '';
+
+    removeSimplePluginProps(j, pluginDef);
+
+    removeSimpleCommandProps(j, commandsProps);
+
+    transformMatchStrs(j, pluginId, csAST, commandsProps);
+
+    commandArrayToObject(j, commandsObjs, commandsColl);
+
+    removeLanguageCode(j, pluginId, csAST);
+
+    replaceNonDefaultExports(j, csAST);
+
+    return csAST.toSource();
+}
+
+function makeMatchingCS(pluginId: string, j: JSCodeshift, source: string): string {
+    const csAST = j(source);
+
+    const pluginDef = getPluginDef(j, csAST);
+    removeSimplePluginProps(j, pluginDef);
+
+    const commandsColl = getCommandsColl(j, csAST);
+    const commandsObjs = getCommandsObjs(j, commandsColl);
+    const commandsProps = getCommandsProps(j, commandsObjs);
+
+    removeSimpleCommandProps(j, commandsProps);
+
+    transformMatchStrs(j, pluginId, csAST, commandsProps);
+
+    commandArrayToObject(j, commandsObjs, commandsColl);
+
+    removeLanguageCode(j, pluginId, csAST);
+
+    replaceNonDefaultExports(j, csAST);
+
+    return csAST.toSource();
+}
 
 /**
  * 

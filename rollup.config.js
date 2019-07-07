@@ -12,6 +12,7 @@ const makeCS = require('./rollup-plugin-make-cs');
 
 const PROD = process.env.NODE_ENV === 'production';
 const FOLDER_REGX = /^src\/(.*)\/.*$/;
+const PART_NAMES = ['backend', 'matching.cs', 'nonmatching.cs'];
 
 module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!src/@types', '!src/*/*.*.ts']).map(fileName => {
 	console.log('doing ' + fileName)
@@ -60,7 +61,7 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 										parser: 'babel',
 										stdin: false
 									});
-									for (let part of ['matching.cs', 'backend']) {
+									for (let part of PART_NAMES) {
 										const filePartName = `${folderName}.${part}.js`;
 										bundle[filePartName] = {
 											isAsset: true,
@@ -81,7 +82,7 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 				}
 			},
 			// to prevent chunking external deps, do the files one by one :( (rollup shortcoming)
-			...[`dist/${folderName}.backend.js`, `dist/${folderName}.matching.cs.js`].map(filename => ({
+			...PART_NAMES.map(partName => `dist/${folderName}.${partName}.js`).map(filename => ({
 				// don't use globby.sync because it resolves before files are ready
 				input: filename,
 				treeshake: {
@@ -118,7 +119,7 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 				}
 			})),
 			{
-				input: [`dist/${folderName}.backend.resolved.js`, `dist/${folderName}.matching.cs.resolved.js`],
+				input: PART_NAMES.map(partName => `dist/${folderName}.${partName}.resolved.js`),
 				plugins: [
 					makeCS(),
 				],
