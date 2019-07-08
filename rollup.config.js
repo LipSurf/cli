@@ -12,7 +12,8 @@ const makeCS = require('./rollup-plugin-make-cs');
 
 const PROD = process.env.NODE_ENV === 'production';
 const FOLDER_REGX = /^src\/(.*)\/.*$/;
-const PART_NAMES = ['backend', 'matching.cs', 'nonmatching.cs'];
+const PLANS = ['0', '10', '20'];
+const PLANS_AND_PARTS = ['backend', ...[].concat.apply([], ['matching.cs', 'nonmatching.cs'].map(cs => PLANS.map(plan => `${plan}.${cs}`)))];
 
 module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!src/@types', '!src/*/*.*.ts']).map(fileName => {
 	console.log('doing ' + fileName)
@@ -61,13 +62,19 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 										parser: 'babel',
 										stdin: false
 									});
-									for (let part of PART_NAMES) {
-										const filePartName = `${folderName}.${part}.js`;
-										bundle[filePartName] = {
-											isAsset: true,
-											fileName: filePartName,
-											source: await fs.readFileSync(`dist/${filePartName}`),
-										};
+									for (let planAndPart of PLANS_AND_PARTS) {
+										const filePartName = `${folderName}.${planAndPart}.js`;
+										try {
+											const source = await fs.readFileSync(`dist/${filePartName}`);
+											bundle[filePartName] = {
+												isAsset: true,
+												fileName: filePartName,
+												source,
+											};
+										} catch (e) {
+											if (e.code !== 'ENOENT')
+												console.log(`${filePartName} problem`, e);
+										}
 									}
 									cb();
 								});
@@ -82,7 +89,7 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 				}
 			},
 			// to prevent chunking external deps, do the files one by one :( (rollup shortcoming)
-			...PART_NAMES.map(partName => `dist/${folderName}.${partName}.js`).map(filename => ({
+			...PLANS_AND_PARTS.map(planAndPart => `dist/${folderName}.${planAndPart}.js`).map(filename => ({
 				// don't use globby.sync because it resolves before files are ready
 				input: filename,
 				treeshake: {
@@ -119,7 +126,7 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 				}
 			})),
 			{
-				input: PART_NAMES.map(partName => `dist/${folderName}.${partName}.resolved.js`),
+				input: PLANS_AND_PARTS.map(planAndPart => `dist/${folderName}.${planAndPart}.resolved.js`),
 				plugins: [
 					makeCS(),
 				],

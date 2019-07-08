@@ -15,7 +15,6 @@
 *    * remove commands.match,description,fn,test,delay,nice,context,enterContext,plan
 *    * replace non-default exports
 *    * TODO: remove commands that have no pageFn or dynamic match
-*    * TODO: remove pageFn of plan > 0
 * Backend: 
 *    * no need to make more space-efficient because the store watchers/mutators
 *      only take what they need.
@@ -33,6 +32,7 @@ interface FileInfo {
 
 const COMMAND_PROPS_TO_REMOVE = ['fn', 'delay', 'description', 'test', 'global', 'context', 'minConfidence', 'enterContext'];
 const PLUGIN_PROPS_TO_REMOVE = ['description', 'homophones', 'version', 'authors', 'match', 'plan', 'apiVersion', 'contexts', 'niceName'];
+const PLANS = [0, 10, 20];
 
 module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
     const pPath = path.parse(fileInfo.path);
@@ -42,8 +42,10 @@ module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
     makeBackend(fileInfo, api, options);
 
     // matching cs
-    fs.writeFileSync(`dist/${pluginId}.matching.cs.js`, makeMatchingCS(pluginId, j, fileInfo.source));
-    fs.writeFileSync(`dist/${pluginId}.nonmatching.cs.js`, makeNonMatchingCS(pluginId, j, fileInfo.source));
+    for (let plan of PLANS) {
+        fs.writeFileSync(`dist/${pluginId}.${plan}.matching.cs.js`, makeMatchingCS(pluginId, j, fileInfo.source, plan) || '');
+        fs.writeFileSync(`dist/${pluginId}.${plan}.nonmatching.cs.js`, makeNonMatchingCS(pluginId, j, fileInfo.source, plan) || '');
+    }
 };
 
 function getPluginDef(j: JSCodeshift, ast: Collection<any>): Collection<VariableDeclarator> {
@@ -58,6 +60,14 @@ function getPluginDef(j: JSCodeshift, ast: Collection<any>): Collection<Variable
         .findVariableDeclarators(exportName)
         .at(0)
         ;
+}
+
+function getPluginPlan(j: JSCodeshift, pluginDef: Collection<VariableDeclarator>): number {
+    const plan = pluginDef
+        .find(j.Property, { key: { name: `plan` }})
+        .find(j.Literal).get(0).node.value
+        ;
+    return plan || 0;
 }
 
 function getCommandsColl(j: JSCodeshift, pluginDef: Collection<VariableDeclarator>): Collection<ArrayExpression> {
@@ -156,7 +166,13 @@ function removeSimplePluginProps(j: JSCodeshift, pluginDef: Collection<VariableD
     return pluginDef
         .find(j.Property)
         // restrict to the right depth
-        .filter(x => pluginDef.get(0).parentPath.value.init.properties[1].argument === x.parentPath.parentPath.value)
+        .filter(x => {
+            // compatibility with diff version of recast
+            const init = pluginDef.get(0).parentPath.value.init;
+            const prop = init.properties || init.arguments;
+                
+            return prop[1].argument === x.parentPath.parentPath.value;
+        })
         .filter(x => PLUGIN_PROPS_TO_REMOVE.includes((<Identifier>x.node.key).name))
         .remove()
         ;
@@ -186,14 +202,56 @@ function replaceNonDefaultExports(j: JSCodeshift, ast: Collection<any>) {
 
 }
 
-function makeNonMatchingCS(pluginId: string, j: JSCodeshift, source: string): string {
-    let csAST = j(source);
+/**
+ * Add pageFn to commands that only have fn.
+ * @param j 
+ * @param commandsObjs 
+ * @param pluginPlan 
+ * @returns if we should output for this plan (if there are specific commands in this level)
+ */
+function replaceCmdsAbovePlan(j: JSCodeshift, commandsObjs: Collection<ObjectExpression>, pluginPlan: number, buildForPlan: number): boolean {
+    let cmdsOnThisPlan: boolean = false;
+    const replaced = commandsObjs
+        .filter(cmdObj => {
+            const planProp = <Property>cmdObj.value.properties.find((prop: Property) => (<Identifier>prop.key).name === 'plan');
+            if (!planProp) {
+                if (pluginPlan === buildForPlan)
+                    cmdsOnThisPlan = true;
+                else if (pluginPlan > buildForPlan) 
+                    return true;
+            } else {
+                const cmdPlan  = <number>(<Literal>planProp.value).value;
+                if (buildForPlan === cmdPlan)
+                    cmdsOnThisPlan = true;
+                if (Math.max(pluginPlan, cmdPlan) > buildForPlan)
+                    return true;
+            }
+        })
+        .map(cmdObj => {
+            const pageFnProp = <Property>cmdObj.value.properties.find((prop: Property) => (<Identifier>prop.key).name === 'pageFn');
+            if (!pageFnProp) {
+                cmdObj.node.properties.push(j.property('init', j.identifier('pageFn'), j.template.expression`showNeedsUpgradeError`));
+            }
+            return cmdObj.parentPath;
+        }, j.Property)
+        .find(j.Property, { key: { name: `pageFn` } })
+        .find(j.ArrowFunctionExpression)
+        ;
+    replaced.replaceWith(j.template.expression`showNeedsUpgradeError`);
+    
+    // if nothing is replaced, and the highestLevel is lower than build for plan, then return false so we
+    // don't build for this level (the highest level might have been 10 or 0, and already built)
+    return cmdsOnThisPlan || buildForPlan === 0;
+}
+
+function makeNonMatchingCS(pluginId: string, j: JSCodeshift, source: string, buildForPlan: number): string {
+    const csAST = j(source);
     const pluginDef = getPluginDef(j, csAST);
     const commandsColl = getCommandsColl(j, pluginDef);
-    const commandsObjs = getCommandsObjs(j, commandsColl);
+    let commandsObjs = getCommandsObjs(j, commandsColl);
 
     // remove non global commands
-    commandsObjs
+    commandsObjs = commandsObjs
         .filter(cmdObj => {
             const globalProp = <Property>cmdObj.value.properties.find((prop: Property) => (<Identifier>prop.key).name === 'global');
             if (!globalProp || (<Literal>globalProp.value).value === false)
@@ -204,45 +262,49 @@ function makeNonMatchingCS(pluginId: string, j: JSCodeshift, source: string): st
     const commandsProps = getCommandsProps(j, commandsObjs);
 
     // if there's no commands, this plugin can be blank
-    if (commandsProps.size() === 0)
+    if (commandsProps.size() === 0) 
         return '';
 
+    // if the plugin has a plan > 0, stub all the pageFns in plan 0 and put real pageFns in the appropriate file
+    const pluginPlan = getPluginPlan(j, pluginDef);
     removeSimplePluginProps(j, pluginDef);
 
-    removeSimpleCommandProps(j, commandsProps);
+    // 0 level (free) plugin always exists so user can get upgrade message
+    if (replaceCmdsAbovePlan(j, commandsObjs, pluginPlan, buildForPlan)) {
+        removeSimpleCommandProps(j, commandsProps);
+        transformMatchStrs(j, pluginId, csAST, commandsProps);
+        commandArrayToObject(j, commandsObjs, commandsColl);
+        removeLanguageCode(j, pluginId, csAST);
+        replaceNonDefaultExports(j, csAST);
 
-    transformMatchStrs(j, pluginId, csAST, commandsProps);
-
-    commandArrayToObject(j, commandsObjs, commandsColl);
-
-    removeLanguageCode(j, pluginId, csAST);
-
-    replaceNonDefaultExports(j, csAST);
-
-    return csAST.toSource();
+        return csAST.toSource();
+    } 
 }
 
-function makeMatchingCS(pluginId: string, j: JSCodeshift, source: string): string {
+function makeMatchingCS(pluginId: string, j: JSCodeshift, source: string, buildForPlan: number): string {
+    debugger;
     const csAST = j(source);
-
     const pluginDef = getPluginDef(j, csAST);
+
+    // if the plugin has a plan > 0, stub all the pageFns in plan 0 and put real pageFns in the appropriate file
+    const pluginPlan = getPluginPlan(j, pluginDef);
+
     removeSimplePluginProps(j, pluginDef);
 
     const commandsColl = getCommandsColl(j, csAST);
     const commandsObjs = getCommandsObjs(j, commandsColl);
     const commandsProps = getCommandsProps(j, commandsObjs);
 
-    removeSimpleCommandProps(j, commandsProps);
+    // 0 level (free) plugin always exists so user can get upgrade message
+    if (replaceCmdsAbovePlan(j, commandsObjs, pluginPlan, buildForPlan)) {
+        removeSimpleCommandProps(j, commandsProps);
+        transformMatchStrs(j, pluginId, csAST, commandsProps);
+        commandArrayToObject(j, commandsObjs, commandsColl);
+        removeLanguageCode(j, pluginId, csAST);
+        replaceNonDefaultExports(j, csAST);
 
-    transformMatchStrs(j, pluginId, csAST, commandsProps);
-
-    commandArrayToObject(j, commandsObjs, commandsColl);
-
-    removeLanguageCode(j, pluginId, csAST);
-
-    replaceNonDefaultExports(j, csAST);
-
-    return csAST.toSource();
+        return csAST.toSource();
+    }
 }
 
 /**
@@ -254,6 +316,5 @@ function makeBackend(fileInfo: FileInfo, api: JSCodeshift, options) {
     const j: JSCodeshift = api.jscodeshift;
 
     const backendAST = j(fileInfo.source);
-    console.log('writing backend');
     fs.writeFileSync(`dist/${plugin}.backend.js`, `${backendAST.toSource()}`);
 }
