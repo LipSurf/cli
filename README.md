@@ -2,13 +2,8 @@ lipsurf-cli
 ===========
 
 To debug split.ts:
-1) Install necessary deps.
-$ yarn add https://github.com/lipsurf/plugin-types ...
-
-2) Copy over source files to use as samples
-$ mkdir src && cp -r ../chrome-extension/premium-plugins/src/Date ./src/
-
-3) node --inspect-brk ./lipsurf-cli build
+Go into the project with example plugins: 
+$ node --inspect-brk ./node_modules/lipsurf-cli/lipsurf-cli build
 
 
 ```
