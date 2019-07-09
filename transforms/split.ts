@@ -251,13 +251,16 @@ function makeNonMatchingCS(j: JSCodeshift, source: string, buildForPlan: number)
     let commandsObjs = getCommandsObjs(j, commandsColl);
 
     // remove non global commands
-    commandsObjs = commandsObjs
+    commandsObjs
         .filter(cmdObj => {
             const globalProp = <Property>cmdObj.value.properties.find((prop: Property) => (<Identifier>prop.key).name === 'global');
             if (!globalProp || (<Literal>globalProp.value).value === false)
                 return true;
         })
         .remove()
+
+    // remaining commandsObjs
+    commandsObjs = getCommandsObjs(j, commandsColl)
 
     const commandsProps = getCommandsProps(j, commandsObjs);
 
