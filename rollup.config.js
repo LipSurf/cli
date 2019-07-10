@@ -62,8 +62,15 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 										parser: 'babel',
 										stdin: false
 									});
+									
 									for (let planAndPart of PLANS_AND_PARTS) {
-										const filePartName = `${folderName}.${planAndPart}.js`;
+										const pattern = `dist/${folderName}.*.${planAndPart}.js`;
+										const fileParts = globby.sync(pattern);
+										if (fileParts.length !== 1) {
+											console.error(`More than one file for ${folderName}`);
+											console.log(fileParts);
+										}
+										const filePartName = fileParts[0].split('dist/')[1];
 										try {
 											const source = await fs.readFileSync(`dist/${filePartName}`);
 											bundle[filePartName] = {
@@ -89,7 +96,8 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 				}
 			},
 			// to prevent chunking external deps, do the files one by one :( (rollup shortcoming)
-			...PLANS_AND_PARTS.map(planAndPart => `dist/${folderName}.${planAndPart}.js`).map(filename => ({
+			// hack: manually including version
+			...PLANS_AND_PARTS.map(planAndPart => `dist/${folderName}.2-0-0.${planAndPart}.js`).map(filename => ({
 				// don't use globby.sync because it resolves before files are ready
 				input: filename,
 				treeshake: {
@@ -126,7 +134,8 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 				}
 			})),
 			{
-				input: PLANS_AND_PARTS.map(planAndPart => `dist/${folderName}.${planAndPart}.resolved.js`),
+				// hack, manually including version
+				input: PLANS_AND_PARTS.map(planAndPart => `dist/${folderName}.2-0-0.${planAndPart}.resolved.js`),
 				plugins: [
 					makeCS(),
 				],

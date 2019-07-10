@@ -15,11 +15,13 @@ module.exports = function makeCS() {
 
                 for (let plan of [0, 10, 20]) {
                     const matchingFilename = keys.find(x => x.includes(`${plan}.matching.`));
-                    const plugin = matchingFilename.split('.')[0];
+                    const splitted = matchingFilename.split('.')
+                    const plugin = splitted[0];
+                    const pluginWithVersion = splitted.slice(0, 2).join('.');
                     const [backend, matchingCS, nonMatchingCS] = PART_NAMES.map(partName => {
                         if (partName !== 'backend')
                             partName = `${plan}.${partName}`;
-                        let fullPart = bundle[`${plugin}.${partName}.resolved.js`].code;
+                        let fullPart = bundle[`${pluginWithVersion}.${partName}.resolved.js`].code;
                         // also make sure it's not blank
                         if (partName.includes('.cs') && fullPart.trim())
                             // wrap in IIFE and take out export (not valid for eval)
@@ -37,7 +39,7 @@ module.exports = function makeCS() {
                                 + matchingCS
                                 + SPLITTER
                                 + nonMatchingCS;
-                        bundle[matchingFilename].fileName = `${plugin}.${plan}.ls`;
+                        bundle[matchingFilename].fileName = `${pluginWithVersion}.${plan}.ls`;
                     }
                 }
                 bundle = Object.keys(bundle)
