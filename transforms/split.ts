@@ -76,13 +76,19 @@ class ParsedPlugin {
                 ;
     }
 
-    private getPluginDef() {
+    private getPluginDef(): Collection<VariableDeclarator> {
         return this.ast
                 .findVariableDeclarators(this.exportName)
                 .at(0);
     }
 
     getBackend() {
+        // add a Plugin.languages object
+        this.pluginDef
+            .find(this.j.Property)
+            .at(0)
+            .insertAfter(this.j.property('init', this.j.identifier('languages'), this.j.template.expression`{}`))
+            ;
         return this.ast.toSource();
     }
 
@@ -134,7 +140,6 @@ class ParsedPlugin {
     }
 
     getVersion() {
-        debugger;
         return this.pluginDef
             .find(this.j.Property, { key: { name: `version` }})
             .filter(x => x.parentPath.node == this.pluginDef.get(0).node.init.properties[1].argument)
