@@ -121,8 +121,8 @@ class ParsedPlugin {
 
         const commandsProps = this.getCommandsProps(commandsObjs);
 
-        // if there's no commands, this plugin can be blank
-        if (commandsProps.size() === 0) 
+        // if there's no commands, and no init and destroy this plugin can be blank
+        if (commandsProps.size() === 0 && !this.getTopLevelProp('init') && !this.getTopLevelProp('destroy')) 
             return '';
 
         this.removeSimplePluginProps();
@@ -214,13 +214,17 @@ class ParsedPlugin {
 
     }
 
-    private getPluginPlan(): number {
-        const plan = this.pluginDef
-            .find(this.j.Property, { key: { name: `plan` }})
+    private getTopLevelProp(name: string) {
+        const topLevelProp = this.pluginDef
+            .find(this.j.Property, { key: { name }})
             .filter(x => x.parentPath.node == this.pluginDef.get(0).node.init.properties[1].argument)
             .find(this.j.Literal)
             ;
-        return plan.length ? plan.get(0).node.value : 0;
+        return topLevelProp.length ? topLevelProp.get(0).node.value : undefined;
+    }
+
+    private getPluginPlan(): number {
+        return this.getTopLevelProp('plan') || 0;
     }
 
     private getCommandsColl(): Collection<ArrayExpression> {
