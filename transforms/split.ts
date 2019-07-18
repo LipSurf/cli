@@ -31,7 +31,7 @@ interface FileInfo {
 }
 
 const COMMAND_PROPS_TO_REMOVE = ['fn', 'delay', 'description', 'test', 'global', 'context', 'minConfidence', 'enterContext'];
-const PLUGIN_PROPS_TO_REMOVE = ['description', 'homophones', 'version', 'authors', 'match', 'plan', 'apiVersion', 'contexts', 'niceName'];
+const PLUGIN_PROPS_TO_REMOVE = ['description', 'homophones', 'version', 'authors', 'match', 'plan', 'apiVersion', 'contexts', 'niceName', 'replacements'];
 const PLANS = [0, 10, 20];
 
 module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
