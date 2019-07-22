@@ -30,8 +30,9 @@ module.exports = function makeCS() {
                     });
 
                     if (plan === 0 || !(matchingCS === '' && nonMatchingCS === '')) {
-                        console.log('whitelisting', matchingFilename, matchingCS.substr(0, 10).length, nonMatchingCS.substr(0, 10).length)
-                        whitelistedKeys.push(matchingFilename);
+                        const newFileName = `${pluginWithVersion}.${plan}.ls`;
+                        // console.log('whitelisting', newFileName, matchingCS.substr(0, 10).length, nonMatchingCS.substr(0, 10).length)
+                        whitelistedKeys.push(newFileName);
                         bundle[matchingFilename].code = importPluginBase
                                 + importExtensionUtil
                                 + backend
@@ -39,15 +40,15 @@ module.exports = function makeCS() {
                                 + matchingCS
                                 + SPLITTER
                                 + nonMatchingCS;
-                        bundle[matchingFilename].fileName = `${pluginWithVersion}.${plan}.ls`;
+                        bundle[matchingFilename].fileName = newFileName;
+                        bundle[newFileName] = bundle[matchingFilename]
                     }
                 }
-                bundle = Object.keys(bundle)
-                    .filter(key => whitelistedKeys.includes(key))
-                    .reduce((obj, key) => {
-                        obj[key] = bundle[key];
-                        return obj;
-                    }, {});
+                Object.keys(bundle)
+                    .filter(key => !whitelistedKeys.includes(key))
+                    .forEach(key => {
+                        delete bundle[key];
+                    });
             }
         },
     };

@@ -30,12 +30,12 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 				],
 				output: {
 					// garbage since we use jscodeshift on the cmd line
-					file: `dist/${folderName}.joined.mjs`,
+					file: `dist/tmp/${folderName}.joined.mjs`,
 					format: 'esm',
 				}
 			},
 			{
-				input: `dist/${folderName}.joined.mjs`,
+				input: `dist/tmp/${folderName}.joined.mjs`,
 				treeshake: false,
 				plugins: [
 					{
@@ -47,7 +47,7 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 								// async/await syntax messes shiz up
 								return new Promise(async cb => {
 									// make this the node_modules path instead
-									let res = await JSCodeShift('/home/mikob/workspace/lipsurf/lipsurf-cli/transforms/split.ts', [`dist/${folderName}.joined.mjs`], {
+									let res = await JSCodeShift('/home/mikob/workspace/lipsurf/lipsurf-cli/transforms/split.ts', [`dist/tmp/${folderName}.joined.mjs`], {
 										transform: './node_modules/lipsurf-cli/transforms/split.ts',
 										verbose: 2,
 										runInBand: true,
@@ -64,15 +64,16 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 									});
 									
 									for (let planAndPart of PLANS_AND_PARTS) {
-										const pattern = `dist/${folderName}.*.${planAndPart}.js`;
+										const pattern = `dist/tmp/${folderName}.*.${planAndPart}.js`;
 										const fileParts = globby.sync(pattern);
 										if (fileParts.length !== 1) {
-											console.error(`More than one file for ${folderName}`);
+											console.error(`Not exactly one file for ${folderName}`);
 											console.log(fileParts);
+											return;
 										}
-										const filePartName = fileParts[0].split('dist/')[1];
+										const filePartName = fileParts[0].split('dist/tmp/')[1];
 										try {
-											const source = await fs.readFileSync(`dist/${filePartName}`);
+											const source = await fs.readFileSync(`dist/tmp/${filePartName}`);
 											bundle[filePartName] = {
 												isAsset: true,
 												fileName: filePartName,
@@ -97,7 +98,7 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 			},
 			// to prevent chunking external deps, do the files one by one :( (rollup shortcoming)
 			// hack: manually including version
-			...PLANS_AND_PARTS.map(planAndPart => `dist/${folderName}.2-0-0.${planAndPart}.js`).map(filename => ({
+			...PLANS_AND_PARTS.map(planAndPart => `dist/tmp/${folderName}.2-0-0.${planAndPart}.js`).map(filename => ({
 				// don't use globby.sync because it resolves before files are ready
 				input: filename,
 				treeshake: {
@@ -134,8 +135,8 @@ module.exports = [].concat(...globby.sync(['src/*/*.ts', '!src/*/tests.ts', '!sr
 				}
 			})),
 			{
-				// hack, manually including version
-				input: PLANS_AND_PARTS.map(planAndPart => `dist/${folderName}.2-0-0.${planAndPart}.resolved.js`),
+				// hack, manually including version in the input file name
+				input: PLANS_AND_PARTS.map(planAndPart => `dist/tmp/${folderName}.2-0-0.${planAndPart}.resolved.js`),
 				plugins: [
 					makeCS(),
 				],

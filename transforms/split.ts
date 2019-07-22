@@ -38,19 +38,20 @@ module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
     const pPath = path.parse(fileInfo.path);
     const pluginId = pPath.name.split('.')[0];
     const j: JSCodeshift = api.jscodeshift;
+    let parsed = new ParsedPlugin(j, fileInfo.source);
+    const version = parsed.getVersion();
+    const firstPartOfPath = `${pPath.dir}/${pluginId}.${version.replace(/\./g, '-')}`;
 
     for (let plan of PLANS) {
         for (let type of ['matching', 'nonmatching']) {
             // shitty, we need to reparse for each type
-            const parsed = new ParsedPlugin(j, fileInfo.source);
+            parsed = new ParsedPlugin(j, fileInfo.source);
             const matching = type === 'matching';
-            const version = parsed.getVersion();
-            fs.writeFileSync(`dist/${pluginId}.${version.replace(/\./g, '-')}.${plan}.${type}.cs.js`, parsed.getCS(matching, plan) || '');
+            fs.writeFileSync(`${firstPartOfPath}.${plan}.${type}.cs.js`, parsed.getCS(matching, plan) || '');
         }
     }
-    const parsed = new ParsedPlugin(j, fileInfo.source);
-    const version = parsed.getVersion();
-    fs.writeFileSync(`dist/${pluginId}.${version.replace(/\./g, '-')}.backend.js`, parsed.getBackend() || '');
+    parsed = new ParsedPlugin(j, fileInfo.source);
+    fs.writeFileSync(`${firstPartOfPath}.backend.js`, parsed.getBackend() || '');
 };
 
 
@@ -100,7 +101,6 @@ class ParsedPlugin {
     getCS(matching: boolean, buildForPlan: number): string {
         // if the plugin has a plan > 0, stub all the pageFns in plan 0 and put real pageFns in the appropriate file
         const pluginPlan = this.getPluginPlan();
-        console.log('plugin plan ', pluginPlan);
 
         const commandsColl = this.getCommandsColl();
         let commandsObjs = this.getCommandsObjs(commandsColl);
