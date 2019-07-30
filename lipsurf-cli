@@ -2,13 +2,13 @@
 'use strict';
 const meow = require('meow');
 const rollup = require('rollup');
-const config = require('./rollup.config.js');
+const getConfig = require('./rollup.config.js');
 
 
 (async () => {
 const cli = meow(`
 	Usage
-	  $ lipsurf-cli build
+	  $ lipsurf-cli build [outdir]
 
 	Options
 	  --watch
@@ -23,8 +23,9 @@ const cli = meow(`
 	}
 });
 
-async function build(flags) {
+async function build(outputDir, flags) {
     const watch = flags.watch;
+    const config = getConfig(outputDir || 'dist');
     if (watch) {
       const watcher = rollup.watch(config);
       watcher.on('event', event => {
@@ -48,5 +49,5 @@ async function build(flags) {
     }
 }
 
-await build(cli.flags);
+await build(cli.input[1], cli.flags);
 })();
