@@ -99,7 +99,7 @@ module.exports = function getConfig(finalOutputDir) {
 				},
 				// to prevent chunking external deps, do the files one by one :( (rollup shortcoming)
 				// hack: manually including version
-				...PLANS_AND_PARTS.map(planAndPart => `dist/tmp/${folderName}.2-3-0.${planAndPart}.js`).map(filename => ({
+				...PLANS_AND_PARTS.map(planAndPart => `dist/tmp/${folderName}.2-4-0.${planAndPart}.js`).map(filename => ({
 					// don't use globby.sync because it resolves before files are ready
 					input: filename,
 					treeshake: {
@@ -137,7 +137,7 @@ module.exports = function getConfig(finalOutputDir) {
 				})),
 				{
 					// hack, manually including version in the input file name
-					input: PLANS_AND_PARTS.map(planAndPart => `dist/tmp/${folderName}.2-3-0.${planAndPart}.resolved.js`),
+					input: PLANS_AND_PARTS.map(planAndPart => `dist/tmp/${folderName}.2-4-0.${planAndPart}.resolved.js`),
 					plugins: [
 						makeCS(),
 					],
