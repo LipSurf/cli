@@ -3,6 +3,7 @@
 const meow = require('meow');
 const rollup = require('rollup');
 const getConfig = require('./rollup.config.js');
+const globby = require('globby');
 
 
 (async () => {
@@ -29,8 +30,16 @@ const cli = meow(`
 	}
 });
 
+const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
+
 async function build(flags, pluginNames) {
     const watch = flags.watch;
+    if (!pluginNames.length) {
+      pluginNames = Array.from(new Set(globby.sync(['src/*/*.ts', '!src/@types'])
+         .map(filePath => FOLDER_REGX.exec(filePath))
+         .filter(regxRes => regxRes && regxRes[1] === regxRes[2])
+         .map(regxRes => regxRes[1])));
+    }
     const config = getConfig(flags.outDir, pluginNames);
     if (watch) {
       const watcher = rollup.watch(config);
