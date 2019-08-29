@@ -22,9 +22,13 @@ EXAMPLE
 ## `lipsurf-cli build`
 
 ```
-USAGE
-  $ lipsurf-cli build
+	Usage
+	  $ lipsurf-cli build -o/--out-dir [OUTDIR] [...PLUGINS]
 
-OPTIONS
-  --watch  watch for file changes and automatically build when there's a change.
+	Options
+    --watch
+    --out-dir/-o
+
+	Examples
+	  $ lipsurf-cli build --watch
 ```

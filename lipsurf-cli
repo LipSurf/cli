@@ -8,10 +8,11 @@ const getConfig = require('./rollup.config.js');
 (async () => {
 const cli = meow(`
 	Usage
-	  $ lipsurf-cli build [outdir]
+	  $ lipsurf-cli build -o/--out-dir [OUTDIR] [...PLUGINS]
 
 	Options
-	  --watch
+    --watch
+    --out-dir/-o
 
 	Examples
 	  $ lipsurf-cli build --watch
@@ -19,13 +20,18 @@ const cli = meow(`
 	flags: {
 		watch: {
 			type: 'boolean',
-		}
+    },
+    'out-dir': {
+      type: 'string',
+      default: 'dist',
+      alias: 'o',
+    }
 	}
 });
 
-async function build(outputDir, flags) {
+async function build(flags, pluginNames) {
     const watch = flags.watch;
-    const config = getConfig(outputDir || 'dist');
+    const config = getConfig(flags.outDir, pluginNames);
     if (watch) {
       const watcher = rollup.watch(config);
       watcher.on('event', event => {
@@ -49,5 +55,5 @@ async function build(outputDir, flags) {
     }
 }
 
-await build(cli.input[1], cli.flags);
+await build(cli.flags, cli.input.slice(1));
 })();
