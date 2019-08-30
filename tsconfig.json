@@ -2,12 +2,12 @@
   "compilerOptions": {
     "noEmitOnError": true,
     "noImplicitAny": false,
+    "strict": true,
     "noResolve": false,
     "moduleResolution": "node",
-    "target": "ES2017"
+    "target": "esNext"
   },
   "exclude": [
-    "node_modules",
-    "docs"
+    "node_modules"
   ],
 }
