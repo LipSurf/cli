@@ -11,12 +11,9 @@ export default class ParsedPlugin {
     private exportName: string;
     
     constructor(private j: JSCodeshift, source: string) {
-        console.log('going')
-        debugger;
+        console.log('parsing')
         this.ast = j(source);
-        console.log('going')
         this.exportName = this.getExportName();
-        console.log('going')
         this.pluginDef = this.getPluginDef();
     }
 

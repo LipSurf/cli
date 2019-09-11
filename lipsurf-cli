@@ -40,7 +40,7 @@ async function build(flags, pluginNames) {
          .filter(regxRes => regxRes && regxRes[1] === regxRes[2])
          .map(regxRes => regxRes[1])));
     }
-    const config = getConfig(flags.outDir, pluginNames);
+    const config = await getConfig(flags.outDir, pluginNames);
     if (watch) {
       const watcher = rollup.watch(config);
       watcher.on('event', event => {
