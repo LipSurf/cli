@@ -14,7 +14,7 @@
     "rollup-plugin-multi-entry": "https://github.com/mikob/rollup-plugin-multi-entry",
     "rollup-plugin-node-resolve": "^5.0.2",
     "rollup-plugin-terser": "^5.0.0",
-    "rollup-plugin-typescript2": "^0.21.1",
+    "rollup-plugin-typescript2": "^0.24.1",
     "tmp": "^0.1.0",
     "ts-node": "^8.3.0",
     "tslib": "^1"

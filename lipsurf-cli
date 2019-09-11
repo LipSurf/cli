@@ -35,9 +35,9 @@ const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
 async function build(flags, pluginNames) {
     const watch = flags.watch;
     if (!pluginNames.length) {
-      pluginNames = Array.from(new Set(globby.sync(['src/*/*.ts', '!src/@types'])
+      pluginNames = Array.from(new Set(globby.sync(['src/*/*.ts', '!src/*/*.*.ts', '!src/@types'])
          .map(filePath => FOLDER_REGX.exec(filePath))
-         .filter(regxRes => regxRes && regxRes[1] === regxRes[2])
+         .filter(regxRes => regxRes && regxRes[1] === regxRes[2]) 
          .map(regxRes => regxRes[1])));
     }
     const config = await getConfig(flags.outDir, pluginNames);
