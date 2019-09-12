@@ -41,6 +41,10 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 			treeshake: false,
 			plugins: [
 				multiEntry(),
+				resolve({
+					preferBuiltins: false,
+				}),
+				commonjs(),
 				typescript(),
 			],
 			output: {
@@ -121,10 +125,6 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 				pureExternalModules: true,
 			},
 			plugins: [
-				resolve({
-					preferBuiltins: false,
-				}),
-				commonjs(),
 				html({
 					include: '**/*.html',
 					htmlMinifierOptions: {

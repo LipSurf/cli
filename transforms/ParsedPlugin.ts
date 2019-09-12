@@ -28,9 +28,24 @@ export default class ParsedPlugin {
     }
 
     private getPluginDef(): Collection<VariableDeclarator> {
-        return this.ast
-                .findVariableDeclarators(this.exportName)
-                .at(0);
+        const varDecl = this.ast.findVariableDeclarators(this.exportName);
+        let i = 0;
+        // there could of course be other variable declarators with 
+        // the same name as the export
+        let curVarDecl = varDecl.at(i);
+        const propsToFind = ['niceName', 'version'];
+        startover:
+        while (curVarDecl) {
+            for (let prop of propsToFind) {
+                if (!curVarDecl.find(this.j.Property, { key: { name: prop }}).at(0).length) {
+                    i++;
+                    curVarDecl = varDecl.at(i);
+                    continue startover;
+                }
+            }
+            break;
+        }
+        return curVarDecl;
     }
 
     getBackend() {
