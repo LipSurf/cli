@@ -2,7 +2,7 @@ import { get } from 'lodash';
 import { JSCodeshift, Identifier, Literal, Property, ObjectProperty, ObjectExpression, VariableDeclarator, ArrayExpression, } from 'jscodeshift';
 import { Collection } from 'jscodeshift/src/Collection';
 
-const COMMAND_PROPS_TO_REMOVE = ['fn', 'delay', 'description', 'test', 'global', 'context', 'minConfidence', 'enterContext'];
+const COMMAND_PROPS_TO_REMOVE = ['fn', 'delay', 'description', 'test', 'global', 'context', 'minConfidence', 'enterContext', 'activeDocument'];
 const PLUGIN_PROPS_TO_REMOVE = ['description', 'homophones', 'version', 'authors', 'match', 'plan', 'apiVersion', 'contexts', 'niceName', 'replacements'];
 
 export default class ParsedPlugin {
