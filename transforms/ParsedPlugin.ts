@@ -9,12 +9,13 @@ export default class ParsedPlugin {
     private ast: any;
     private pluginDef: Collection<VariableDeclarator>;
     private exportName: string;
+    private pluginPlan: number;
     
     constructor(private j: JSCodeshift, source: string) {
-        console.log('parsing')
         this.ast = j(source);
         this.exportName = this.getExportName();
         this.pluginDef = this.getPluginDef();
+        this.pluginPlan = this.getPluginPlan();
     }
 
     private getExportName() {
@@ -65,8 +66,6 @@ export default class ParsedPlugin {
      */
     getCS(matching: boolean, buildForPlan: number): string|undefined {
         // if the plugin has a plan > 0, stub all the pageFns in plan 0 and put real pageFns in the appropriate file
-        const pluginPlan = this.getPluginPlan();
-
         const commandsColl = this.getCommandsColl();
         let commandsObjs = this.getCommandsObjs(commandsColl);
 
@@ -94,7 +93,7 @@ export default class ParsedPlugin {
         this.removeSimplePluginProps();
 
         // 0 level (free) plugin always exists so user can get upgrade message
-        if (this.replaceCmdsAbovePlan(commandsObjs, pluginPlan, buildForPlan)) {
+        if (this.replaceCmdsAbovePlan(commandsObjs, this.pluginPlan, buildForPlan)) {
             this.removeSimpleCommandProps(commandsProps);
             this.transformMatchStrs(commandsProps);
             this.commandArrayToObject(commandsObjs, commandsColl);

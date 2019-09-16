@@ -31,14 +31,13 @@ module.exports = function (j: JSCodeshift, plans: number[], source: string): Spl
     const parsed = new ParsedPlugin(j, source);
     const ret: Partial<SplitPlugin> = {
         byPlan: [parsed.getBackend()],
+        version: parsed.getVersion(),
     };
     for (let type of ['matching', 'nonmatching']) {
         const matching = type === 'matching';
         for (let plan of plans) {
-            // shitty, we need to reparse for each type - how can we avoid
+            // shitty, we need to reparse for each type - only adds ~20ms per parsing though (not a bottleneck)
             let curParsed = new ParsedPlugin(j, source);
-            if (!ret.version)
-                ret.version = curParsed.getVersion();
             ret.byPlan!.push(curParsed.getCS(matching, plan) || '');
         }
     }
