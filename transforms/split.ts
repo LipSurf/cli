@@ -19,36 +19,30 @@
 *    * no need to make more space-efficient because the store watchers/mutators
 *      only take what they need.
 */
-import * as path from 'path';
-import * as fs from 'fs';
 import { JSCodeshift, } from 'jscodeshift';
 import ParsedPlugin from './ParsedPlugin';
 
-interface FileInfo {
-    path: string;
-    source: string;
+interface SplitPlugin {
+    version: string;
+    byPlan: string[];
 }
 
-const PLANS = [0, 10, 20];
-
-module.exports = function (fileInfo: FileInfo, api: JSCodeshift, options) {
-    const pPath = path.parse(fileInfo.path);
-    const pluginId = pPath.name.split('.')[0];
-    const j: JSCodeshift = api.jscodeshift;
-    let parsed = new ParsedPlugin(j, fileInfo.source);
-    const version = parsed.getVersion();
-    const firstPartOfPath = `${pPath.dir}/${pluginId}.${version.replace(/\./g, '-')}`;
-
-    for (let plan of PLANS) {
-        for (let type of ['matching', 'nonmatching']) {
-            // shitty, we need to reparse for each type
-            parsed = new ParsedPlugin(j, fileInfo.source);
-            const matching = type === 'matching';
-            fs.writeFileSync(`${firstPartOfPath}.${plan}.${type}.cs.js`, parsed.getCS(matching, plan) || '');
+module.exports = function (j: JSCodeshift, plans: number[], source: string): SplitPlugin {
+    const parsed = new ParsedPlugin(j, source);
+    const ret: Partial<SplitPlugin> = {
+        byPlan: [parsed.getBackend()],
+    };
+    for (let type of ['matching', 'nonmatching']) {
+        const matching = type === 'matching';
+        for (let plan of plans) {
+            // shitty, we need to reparse for each type - how can we avoid
+            let curParsed = new ParsedPlugin(j, source);
+            if (!ret.version)
+                ret.version = curParsed.getVersion();
+            ret.byPlan!.push(curParsed.getCS(matching, plan) || '');
         }
     }
-    parsed = new ParsedPlugin(j, fileInfo.source);
-    fs.writeFileSync(`${firstPartOfPath}.backend.js`, parsed.getBackend() || '');
+    return <SplitPlugin>ret;
 };
 
 

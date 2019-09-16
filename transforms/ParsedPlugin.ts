@@ -48,7 +48,7 @@ export default class ParsedPlugin {
         return curVarDecl;
     }
 
-    getBackend() {
+    getBackend(): string {
         // add a Plugin.languages object
         this.pluginDef
             .find(this.j.Property)
@@ -105,7 +105,7 @@ export default class ParsedPlugin {
         }
     }
 
-    getVersion() {
+    getVersion(): string {
         return this.pluginDef
             .find(this.j.Property, { key: { name: `version` }})
             .filter(x => x.parentPath.node == this.pluginDef.get(0).node.init.properties[1].argument)

@@ -3,19 +3,22 @@ const typescript = require('rollup-plugin-typescript2');
 const { terser } = require("rollup-plugin-terser");
 const multiEntry = require("rollup-plugin-multi-entry");
 const resolve = require("rollup-plugin-node-resolve");
-const globby = require('globby');
 const commonjs = require('rollup-plugin-commonjs');
 const fs = require('fs');
-const JSCodeShift = require('jscodeshift').run;
+const jscodeshift = require('jscodeshift');
 
 const makeCS = require('./rollup-plugin-make-cs');
 
-// require('ts-node/register');
-// const ParsedPlugin = require('./transforms/ParsedPlugin').default;
+require('ts-node').register({ /* options */ })
+const split = require('./transforms/split');
 
 const PROD = process.env.NODE_ENV === 'production';
-const PLANS = ['0', '10', '20'];
+const PLANS = [0, 10, 20];
 const PLANS_AND_PARTS = ['backend', ...[].concat.apply([], ['matching.cs', 'nonmatching.cs'].map(cs => PLANS.map(plan => `${plan}.${cs}`)))];
+
+function versionConvertDots(v) {
+	return v.replace(/\./g, '-')
+}
 
 module.exports = async function getConfig(finalOutputDir, pluginNames) {
 	return (await Promise.all(pluginNames.map(async pluginName => {
@@ -32,7 +35,7 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 		// console.log(version);
 		// debugger;
 		// return;
-		const version = '2.7.0'.replace(/\./g, '-');
+		const version = versionConvertDots('2.7.2');
 		return [{
 			input: [
 				`src/${pluginName}/${pluginName}.ts`,
@@ -66,36 +69,19 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 							// async/await syntax messes shiz up
 							return new Promise(async cb => {
 								// make this the node_modules path instead
-								await JSCodeShift('/home/mikob/workspace/lipsurf/lipsurf-cli/transforms/split.ts', [`dist/tmp/${pluginName}.joined.mjs`], {
-									transform: './node_modules/lipsurf-cli/transforms/split.ts',
-									verbose: 2,
-									runInBand: true,
-
-									dry: false,
-									print: false,
-									babel: true,
-									extensions: 'js,mjs',
-									ignorePattern: [],
-									ignoreConfig: [],
-									silent: false,
-									parser: 'babel',
-									stdin: false
-								});
+								const src = fs.readFileSync(`dist/tmp/${pluginName}.joined.mjs`).toString();
+								const ret = split(jscodeshift, PLANS, src);
+								const version = ret.version;
+								let i = 0;
 
 								for (let planAndPart of PLANS_AND_PARTS) {
-									const pattern = `dist/tmp/${pluginName}.*.${planAndPart}.js`;
-									const fileParts = globby.sync(pattern);
-									if (fileParts.length !== 1) {
-										console.error(`Not exactly one file for ${pluginName}`);
-										console.log(fileParts);
-										return;
-									}
-									const filePartName = fileParts[0].split('dist/tmp/')[1];
+									const source = ret.byPlan[i];
+									i++
 									try {
-										const source = await fs.readFileSync(`dist/tmp/${filePartName}`);
-										bundle[filePartName] = {
+										const fullName = `${pluginName}.${versionConvertDots(version)}.${planAndPart}.js`;
+										bundle[fullName] = {
 											isAsset: true,
-											fileName: filePartName,
+											fileName: fullName,
 											source,
 										};
 									} catch (e) {
@@ -110,8 +96,7 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 				}
 			],
 			output: {
-				// garbage since we use jscodeshift on the cmd line
-				file: `/tmp/${pluginName}.garbage.js`,
+				dir: 'dist/tmp',
 				format: 'esm',
 			}
 		},
