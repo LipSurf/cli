@@ -8,13 +8,13 @@
   "dependencies": {
     "jscodeshift": "https://github.com/mikob/jscodeshift#js-api",
     "meow": "^5.0.0",
-    "rollup": "^1.15.3",
+    "rollup": "^1.21.4",
     "rollup-plugin-commonjs": "^10.0.0",
     "rollup-plugin-html": "^0.2.1",
     "rollup-plugin-multi-entry": "https://github.com/mikob/rollup-plugin-multi-entry",
     "rollup-plugin-node-resolve": "^5.0.2",
     "rollup-plugin-terser": "^5.0.0",
-    "rollup-plugin-typescript2": "^0.24.1",
+    "rollup-plugin-typescript2": "^0.24.2",
     "tmp": "^0.1.0",
     "ts-node": "^8.3.0",
     "tslib": "^1"
@@ -28,7 +28,7 @@
     "@types/node": "^10",
     "@types/tmp": "^0.1.0",
     "globby": "^9.2.0",
-    "typescript": "^3.5.2"
+    "typescript": "^3.6.3"
   },
   "engines": {
     "node": ">=8.0.0"

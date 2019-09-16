@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "noEmitOnError": true,
+    "incremental": true,
     "noImplicitAny": false,
     "strict": true,
     "noResolve": false,
