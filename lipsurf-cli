@@ -2,18 +2,19 @@
 'use strict';
 const meow = require('meow');
 const rollup = require('rollup');
-const getConfig = require('./rollup.config.js');
+const getConfig = require('./rollup.config');
 const globby = require('globby');
 
 
 (async () => {
 const cli = meow(`
 	Usage
-	  $ lipsurf-cli build -o/--out-dir [OUTDIR] [...PLUGINS]
+	  $ lipsurf-cli build -o/--out-dir [OUTDIR] -p [TSCONFIG] [...PLUGINS]
 
 	Options
     --watch
     --out-dir/-o
+    -p
 
 	Examples
 	  $ lipsurf-cli build --watch
@@ -26,6 +27,10 @@ const cli = meow(`
       type: 'string',
       default: 'dist',
       alias: 'o',
+    },
+    'p': {
+      type: 'string',
+      default: './tsconfig.json',
     }
 	}
 });
@@ -40,7 +45,7 @@ async function build(flags, pluginNames) {
          .filter(regxRes => regxRes && regxRes[1] === regxRes[2]) 
          .map(regxRes => regxRes[1])));
     }
-    const config = await getConfig(flags.outDir, pluginNames);
+    const config = await getConfig(flags.outDir, pluginNames, flags.p);
     if (watch) {
       const watcher = rollup.watch(config);
       watcher.on('event', event => {

@@ -6,8 +6,7 @@
     "strict": true,
     "noResolve": false,
     "moduleResolution": "node",
-    "target": "es5",
-    "outDir": "lib"
+    "target": "esNext"
   },
   "exclude": [
     "node_modules"

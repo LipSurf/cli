@@ -9,8 +9,7 @@ const jscodeshift = require('jscodeshift');
 
 const makeCS = require('./rollup-plugin-make-cs');
 
-require('ts-node').register({ /* options */ })
-const split = require('./transforms/split');
+const split = require('./lib/split');
 
 const PROD = process.env.NODE_ENV === 'production';
 const PLANS = [0, 10, 20];
@@ -20,7 +19,7 @@ function versionConvertDots(v) {
 	return v.replace(/\./g, '-')
 }
 
-module.exports = async function getConfig(finalOutputDir, pluginNames) {
+module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig, dir='') {
 	return (await Promise.all(pluginNames.map(async pluginName => {
 		// const pluginVersion = babelParser.parse(`src/${pluginName}/${pluginName}.ts`, {
 		// 	sourceType: 'module',
@@ -35,11 +34,11 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 		// console.log(version);
 		// debugger;
 		// return;
-		const version = versionConvertDots('2.7.2');
+		const version = versionConvertDots('2.8.0');
 		return [{
 			input: [
-				`src/${pluginName}/${pluginName}.ts`,
-				`src/${pluginName}/${pluginName}.*.ts`,
+				`${dir}src/${pluginName}/${pluginName}.ts`,
+				`${dir}src/${pluginName}/${pluginName}.*.ts`,
 			],
 			treeshake: false,
 			plugins: [
@@ -48,16 +47,18 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 					preferBuiltins: false,
 				}),
 				commonjs(),
-				typescript(),
+				typescript({
+					tsconfig,
+				}),
 			],
 			output: {
 				// garbage since we use jscodeshift on the cmd line
-				file: `dist/tmp/${pluginName}.joined.mjs`,
+				file: `${dir}dist/tmp/${pluginName}.joined.mjs`,
 				format: 'esm',
 			}
 		},
 		{
-			input: `dist/tmp/${pluginName}.joined.mjs`,
+			input: `${dir}dist/tmp/${pluginName}.joined.mjs`,
 			treeshake: false,
 			plugins: [
 				{
@@ -69,7 +70,7 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 							// async/await syntax messes shiz up
 							return new Promise(async cb => {
 								// make this the node_modules path instead
-								const src = fs.readFileSync(`dist/tmp/${pluginName}.joined.mjs`).toString();
+								const src = fs.readFileSync(`${dir}dist/tmp/${pluginName}.joined.mjs`).toString();
 								const ret = split(jscodeshift, PLANS, src);
 								const version = ret.version;
 								let i = 0;
@@ -96,13 +97,13 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 				}
 			],
 			output: {
-				dir: 'dist/tmp',
+				dir: `${dir}dist/tmp`,
 				format: 'esm',
 			}
 		},
 		// to prevent chunking external deps, do the files one by one :( (rollup shortcoming)
 		// hack: manually including version
-		...PLANS_AND_PARTS.map(planAndPart => `dist/tmp/${pluginName}.${version}.${planAndPart}.js`).map(filename => ({
+		...PLANS_AND_PARTS.map(planAndPart => `${dir}dist/tmp/${pluginName}.${version}.${planAndPart}.js`).map(filename => ({
 			// don't use globby.sync because it resolves before files are ready
 			input: filename,
 			treeshake: {
@@ -138,7 +139,7 @@ module.exports = async function getConfig(finalOutputDir, pluginNames) {
 		})),
 		{
 			// hack, manually including version in the input file name
-			input: PLANS_AND_PARTS.map(planAndPart => `dist/tmp/${pluginName}.${version}.${planAndPart}.resolved.js`),
+			input: PLANS_AND_PARTS.map(planAndPart => `${dir}dist/tmp/${pluginName}.${version}.${planAndPart}.resolved.js`),
 			plugins: [
 				makeCS(),
 			],

@@ -276,9 +276,11 @@ export default class ParsedPlugin {
     private commandArrayToObject(commandsObjs: Collection<ObjectExpression>, commandsColl: Collection<ArrayExpression>) {
         // filter out already removed nodes
         const cmdsByName = commandsObjs.nodes().filter(x => x).map(cmdPath => {
-            let nameProp = <ObjectProperty>cmdPath.properties.find(x => (<Identifier>(<ObjectProperty>x).key).name === 'name');
+            // name for object literal without quotes
+            // value for with quotes
+            let nameProp = <ObjectProperty>cmdPath.properties.find(x => (<Identifier>(<ObjectProperty>x).key).name === 'name' || (<Literal>(<ObjectProperty>x).key).value === 'name');
             let name = <string>(<Literal>(nameProp).value).value;
-            let otherProps = cmdPath.properties.filter(x => (<Identifier>(<ObjectProperty>x).key).name !== 'name');
+            let otherProps = cmdPath.properties.filter(x => (<Identifier>(<ObjectProperty>x).key).name !== 'name' && (<Literal>(<ObjectProperty>x).key).value !== 'name');
             return this.j.property('init', this.j.literal(name), this.j.objectExpression(otherProps));
         });
         commandsColl.replaceWith(this.j.objectExpression(cmdsByName));
