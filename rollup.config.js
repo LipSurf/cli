@@ -34,7 +34,7 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 		// console.log(version);
 		// debugger;
 		// return;
-		const version = versionConvertDots('2.8.0');
+		const version = versionConvertDots('2.9.0');
 		return [{
 			input: [
 				`${dir}src/${pluginName}/${pluginName}.ts`,
