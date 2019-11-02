@@ -1,5 +1,4 @@
 const html = require('rollup-plugin-html');
-const typescript = require('rollup-plugin-typescript2');
 const { terser } = require("rollup-plugin-terser");
 const multiEntry = require("rollup-plugin-multi-entry");
 const resolve = require("rollup-plugin-node-resolve");
@@ -37,8 +36,8 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 		const version = versionConvertDots('2.9.0');
 		return [{
 			input: [
-				`${dir}src/${pluginName}/${pluginName}.ts`,
-				`${dir}src/${pluginName}/${pluginName}.*.ts`,
+				`${dir}dist/tmp/${pluginName}/${pluginName}.js`,
+				`${dir}dist/tmp/${pluginName}/${pluginName}.*.js`,
 			],
 			treeshake: false,
 			plugins: [
@@ -47,9 +46,9 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 					preferBuiltins: false,
 				}),
 				commonjs(),
-				typescript({
-					tsconfig,
-				}),
+				// typescript({
+				// 	tsconfig,
+				// }),
 			],
 			output: {
 				// garbage since we use jscodeshift on the cmd line
@@ -150,5 +149,5 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 		}
 	];
 	}
-	))).flat();
+	))).flat(1);
 }

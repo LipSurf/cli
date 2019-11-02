@@ -39,6 +39,7 @@ const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
 
 async function build(flags, pluginNames) {
     const watch = flags.watch;
+    const timeStart = new Date();
     if (!pluginNames.length) {
       pluginNames = Array.from(new Set(globby.sync(['src/*/*.ts', '!src/*/*.*.ts', '!src/@types'])
          .map(filePath => FOLDER_REGX.exec(filePath))
@@ -65,7 +66,8 @@ async function build(flags, pluginNames) {
         await bundle.generate(conf);
         await bundle.write(conf);
       }
-      console.log(`Done building.`);
+      const timeEnd = new Date();
+      console.log(`Done building in ${Math.round(timeEnd - timeStart)/1000} seconds.`);
     }
 }
 
