@@ -29,6 +29,7 @@
     "@types/node": "^10",
     "@types/tmp": "^0.1.0",
     "globby": "^9.2.0",
+    "rollup-plugin-execute": "^1.1.1",
     "typescript": "^3.6.3"
   },
   "engines": {

@@ -3,6 +3,7 @@ const { terser } = require("rollup-plugin-terser");
 const multiEntry = require("rollup-plugin-multi-entry");
 const resolve = require("rollup-plugin-node-resolve");
 const commonjs = require('rollup-plugin-commonjs');
+const execute = require('rollup-plugin-execute');
 const fs = require('fs');
 const jscodeshift = require('jscodeshift');
 
@@ -41,6 +42,7 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 			],
 			treeshake: false,
 			plugins: [
+				execute(`tsc -p tsconfig.json`),
 				multiEntry(),
 				resolve({
 					preferBuiltins: false,
