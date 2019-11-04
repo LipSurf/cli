@@ -3,7 +3,6 @@ const { terser } = require("rollup-plugin-terser");
 const multiEntry = require("rollup-plugin-multi-entry");
 const resolve = require("rollup-plugin-node-resolve");
 const commonjs = require('rollup-plugin-commonjs');
-const execute = require('rollup-plugin-execute');
 const fs = require('fs');
 const jscodeshift = require('jscodeshift');
 
@@ -14,10 +13,6 @@ const split = require('./lib/split');
 const PROD = process.env.NODE_ENV === 'production';
 const PLANS = [0, 10, 20];
 const PLANS_AND_PARTS = ['backend', ...[].concat.apply([], ['matching.cs', 'nonmatching.cs'].map(cs => PLANS.map(plan => `${plan}.${cs}`)))];
-
-function versionConvertDots(v) {
-	return v.replace(/\./g, '-')
-}
 
 module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig, dir='') {
 	return (await Promise.all(pluginNames.map(async pluginName => {
@@ -34,7 +29,6 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 		// console.log(version);
 		// debugger;
 		// return;
-		const version = versionConvertDots('2.9.0');
 		return [{
 			input: [
 				`${dir}dist/tmp/${pluginName}/${pluginName}.js`,
@@ -42,15 +36,11 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 			],
 			treeshake: false,
 			plugins: [
-				execute(`tsc -p tsconfig.json`),
 				multiEntry(),
 				resolve({
 					preferBuiltins: false,
 				}),
 				commonjs(),
-				// typescript({
-				// 	tsconfig,
-				// }),
 			],
 			output: {
 				// garbage since we use jscodeshift on the cmd line
@@ -73,14 +63,13 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 								// make this the node_modules path instead
 								const src = fs.readFileSync(`${dir}dist/tmp/${pluginName}.joined.mjs`).toString();
 								const ret = split(jscodeshift, PLANS, src);
-								const version = ret.version;
 								let i = 0;
 
 								for (let planAndPart of PLANS_AND_PARTS) {
 									const source = ret.byPlan[i];
 									i++
 									try {
-										const fullName = `${pluginName}.${versionConvertDots(version)}.${planAndPart}.js`;
+										const fullName = `${pluginName}.${planAndPart}.js`;
 										bundle[fullName] = {
 											isAsset: true,
 											fileName: fullName,
@@ -103,8 +92,7 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 			}
 		},
 		// to prevent chunking external deps, do the files one by one :( (rollup shortcoming)
-		// hack: manually including version
-		...PLANS_AND_PARTS.map(planAndPart => `${dir}dist/tmp/${pluginName}.${version}.${planAndPart}.js`).map(filename => ({
+		...PLANS_AND_PARTS.map(planAndPart => `${dir}dist/tmp/${pluginName}.${planAndPart}.js`).map(filename => ({
 			// don't use globby.sync because it resolves before files are ready
 			input: filename,
 			treeshake: {
@@ -139,8 +127,7 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig,
 			}
 		})),
 		{
-			// hack, manually including version in the input file name
-			input: PLANS_AND_PARTS.map(planAndPart => `${dir}dist/tmp/${pluginName}.${version}.${planAndPart}.resolved.js`),
+			input: PLANS_AND_PARTS.map(planAndPart => `${dir}dist/tmp/${pluginName}.${planAndPart}.resolved.js`),
 			plugins: [
 				makeCS(),
 			],

@@ -4,9 +4,10 @@ const meow = require('meow');
 const rollup = require('rollup');
 const getConfig = require('./rollup.config');
 const globby = require('globby');
+const ts = require('typescript');
 
+const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
 
-(async () => {
 const cli = meow(`
 	Usage
 	  $ lipsurf-cli build -o/--out-dir [OUTDIR] -p [TSCONFIG] [...PLUGINS]
@@ -35,18 +36,60 @@ const cli = meow(`
 	}
 });
 
-const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
+const parseConfigHost /* : any */ = {
+  fileExists: ts.sys.fileExists,
+  readDirectory: ts.sys.readDirectory,
+  readFile: ts.sys.readFile,
+  useCaseSensitiveFileNames: true,
+};
+const configFileName = ts.findConfigFile(
+  "./",
+  ts.sys.fileExists,
+  "tsconfig.json"
+);
+
+function compile(config) {
+  let program = ts.createProgram(config.fileNames, config.options);
+  let emitResult = program.emit();
+
+  let allDiagnostics = ts
+    .getPreEmitDiagnostics(program)
+    .concat(emitResult.diagnostics);
+
+  allDiagnostics.forEach(diagnostic => {
+    if (diagnostic.file) {
+      let { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
+        diagnostic.start
+      );
+      let message = ts.flattenDiagnosticMessageText(
+        diagnostic.messageText,
+        "\n"
+      );
+      console.log(
+        `${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message}`
+      );
+    } else {
+      console.log(
+        `${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`
+      );
+    }
+  });
+
+  if (emitResult.emitSkipped)
+    throw 'TypeScript compile errors.'
+}
 
 async function build(flags, pluginNames) {
     const watch = flags.watch;
     const timeStart = new Date();
+    const globbedTs = globby.sync(['src/*/*.ts', '!src/*/*.*.ts', '!src/@types']);
     if (!pluginNames.length) {
-      pluginNames = Array.from(new Set(globby.sync(['src/*/*.ts', '!src/*/*.*.ts', '!src/@types'])
+      pluginNames = Array.from(new Set(globbedTs
          .map(filePath => FOLDER_REGX.exec(filePath))
          .filter(regxRes => regxRes && regxRes[1] === regxRes[2]) 
          .map(regxRes => regxRes[1])));
     }
-    const config = await getConfig(flags.outDir, pluginNames, flags.p);
+    const config = await getConfig(flags.outDir, pluginNames, flags.p, process.cwd() + '/');
     if (watch) {
       const watcher = rollup.watch(config);
       watcher.on('event', event => {
@@ -61,15 +104,21 @@ async function build(flags, pluginNames) {
         }
       });
     } else {
+      const configFile = ts.readConfigFile(configFileName, ts.sys.readFile);
+      const parsedConfig = ts.parseJsonConfigFileContent(configFile.config, parseConfigHost, './');
+      compile(parsedConfig);
+      const tsTimeEnd = new Date();
+      console.log(`Done with ts compile after ${Math.round((tsTimeEnd - timeStart)/1000)} seconds.`)
       for (let conf of config) {
         const bundle = await rollup.rollup(conf)
         await bundle.generate(conf);
         await bundle.write(conf);
       }
       const timeEnd = new Date();
-      console.log(`Done building in ${Math.round(timeEnd - timeStart)/1000} seconds.`);
+      console.log(`Done building in ${Math.round((timeEnd - timeStart)/1000)} seconds.`);
     }
 }
 
-await build(cli.flags, cli.input.slice(1));
+(async () => {
+  await build(cli.flags, cli.input.slice(1));
 })();

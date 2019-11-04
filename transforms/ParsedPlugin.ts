@@ -1,3 +1,6 @@
+/**
+ * Expects js code in es7 form
+ */
 import { get } from 'lodash';
 import { JSCodeshift, Identifier, Literal, Property, ObjectProperty, ObjectExpression, VariableDeclarator, ArrayExpression, } from 'jscodeshift';
 import { Collection } from 'jscodeshift/src/Collection';
@@ -107,7 +110,14 @@ export default class ParsedPlugin {
     getVersion(): string {
         return this.pluginDef
             .find(this.j.Property, { key: { name: `version` }})
-            .filter(x => x.parentPath.node == this.pluginDef.get(0).node.init.properties[1].argument)
+            .filter(x => {
+                // hacky
+                // dev build
+                const typeA = x.parentPath.node == this.pluginDef.get(0).node.init.properties[1].argument;
+                // prod build
+                const typeB = x.get(0).parentPath.parentPath.parentPath.parentPath.node == this.pluginDef.get(0).node;
+                return typeA || typeB;
+            })
             .find(this.j.Literal)
             .get(0)
             .node
