@@ -85,7 +85,7 @@ const formatHost = {
   getNewLine: () => ts.sys.newLine
 };
 
-function watchMain() {
+function watchTs() {
   // TypeScript can use several different program creation "strategies":
   //  * ts.createEmitAndSemanticDiagnosticsBuilderProgram,
   //  * ts.createSemanticDiagnosticsBuilderProgram
@@ -100,7 +100,7 @@ function watchMain() {
   // `createSemanticDiagnosticsBuilderProgram`, the only difference is emit.
   // For pure type-checking scenarios, or when another tool/process handles emit,
   // using `createSemanticDiagnosticsBuilderProgram` may be more desirable.
-  const createProgram = ts.createSemanticDiagnosticsBuilderProgram;
+  const createProgram = ts.createEmitAndSemanticDiagnosticsBuilderProgram;
 
   // Note that there is another overload for `createWatchCompilerHost` that takes
   // a set of root files.
@@ -171,7 +171,7 @@ async function build(flags, pluginNames) {
     }
     const config = await getConfig(flags.outDir, pluginNames, flags.p, process.cwd() + '/');
     if (watch) {
-      watchMain();
+      watchTs();
       const watcher = rollup.watch(config);
       watcher.on('event', event => {
         switch (event.code) {
