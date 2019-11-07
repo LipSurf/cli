@@ -32,7 +32,7 @@
     "typescript": "^3.6.3"
   },
   "engines": {
-    "node": ">=8.0.0"
+    "node": ">=12.0.0"
   },
   "homepage": "https://github.com/LipSurf/lipsurf-cli",
   "license": "MIT",
