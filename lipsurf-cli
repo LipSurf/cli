@@ -169,7 +169,7 @@ async function build(flags, pluginNames) {
          .filter(regxRes => regxRes && regxRes[1] === regxRes[2]) 
          .map(regxRes => regxRes[1])));
     }
-    const rollupConfig = await getConfig(flags.outDir, pluginNames, flags.p, process.cwd() + '/');
+    const rollupConfig = await getConfig(flags.outDir, pluginNames, process.cwd() + '/');
     // initial run of watch for ts doesn't output anything so we compile this way
     const configFile = ts.readConfigFile(configFileName, ts.sys.readFile);
     const parsedConfig = ts.parseJsonConfigFileContent(configFile.config, parseConfigHost, './');

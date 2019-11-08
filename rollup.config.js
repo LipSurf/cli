@@ -14,7 +14,7 @@ const PROD = process.env.NODE_ENV === 'production';
 const PLANS = [0, 10, 20];
 const PLANS_AND_PARTS = ['backend', ...[].concat.apply([], ['matching.cs', 'nonmatching.cs'].map(cs => PLANS.map(plan => `${plan}.${cs}`)))];
 
-module.exports = async function getConfig(finalOutputDir, pluginNames, tsconfig, dir='') {
+module.exports = async function getConfig(finalOutputDir, pluginNames, dir='') {
 	return (await Promise.all(pluginNames.map(async pluginName => {
 		// const pluginVersion = babelParser.parse(`src/${pluginName}/${pluginName}.ts`, {
 		// 	sourceType: 'module',
