@@ -1,40 +1,38 @@
 #!/usr/bin/env node
 'use strict';
-const meow = require('meow');
+const program = require('commander');
 const rollup = require('rollup');
 const getConfig = require('./rollup.config');
 const globby = require('globby');
 const ts = require('typescript');
+const fs = require('fs');
+const jscodeshift = require('jscodeshift');
+const execSync = require('child_process').execSync;
+const ParsedPlugin = require('./lib/ParsedPlugin').default;
 
 const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
 
-const cli = meow(`
-	Usage
-	  $ lipsurf-cli build -o/--out-dir [OUTDIR] -p [TSCONFIG] [...PLUGINS]
+program
+  .option('-p, --project', 'ts config file path', './tsconfig.json')
+  .option('-o, --out-dir <destination>', 'destination', 'dist');
 
-	Options
-    --watch
-    --out-dir/-o
-    -p
+program
+  .command('build [...PLUGINS]')
+  .description('build lipsurf plugins')
+  .option('-w, --watch')
+  .action(async (plugins, cmdObj) => {
+    await build({...cmdObj, ...cmdObj.parent}, plugins);
+  });
 
-	Examples
-	  $ lipsurf-cli build --watch
-`, {
-	flags: {
-		watch: {
-			type: 'boolean',
-    },
-    'out-dir': {
-      type: 'string',
-      default: 'dist',
-      alias: 'o',
-    },
-    'p': {
-      type: 'string',
-      default: './tsconfig.json',
-    }
-	}
-});
+program
+  .command('vup')
+  .description('up the minor version of all the plugins')
+  .option('-v, --version <version>', 'specify a version instead of incrementing the minor version by 1')
+  .action(async (cmdObj) => {
+    await upVersion({...cmdObj, ...cmdObj.parent});
+  });
+
+program.parse(process.argv);
 
 const parseConfigHost /* : any */ = {
   fileExists: ts.sys.fileExists,
@@ -159,17 +157,20 @@ function reportWatchStatusChanged(diagnostic) {
   console.info(ts.formatDiagnostic(diagnostic, formatHost));
 }
 
-async function build(flags, pluginNames) {
-    const watch = flags.watch;
+async function build(options, plugins) {
+    if (typeof plugins === 'undefined')
+      plugins = [];
+    let pluginNames = [].concat(plugins);
+    const watch = options.watch;
     const timeStart = new Date();
     const globbedTs = globby.sync(['src/*/*.ts', '!src/*/*.*.ts', '!src/@types']);
     if (!pluginNames.length) {
       pluginNames = Array.from(new Set(globbedTs
          .map(filePath => FOLDER_REGX.exec(filePath))
-         .filter(regxRes => regxRes && regxRes[1] === regxRes[2]) 
+         .filter(regxRes => regxRes && regxRes[1] === regxRes[2])
          .map(regxRes => regxRes[1])));
     }
-    const rollupConfig = await getConfig(flags.outDir, pluginNames, process.cwd() + '/');
+    const rollupConfig = await getConfig(options.outDir, pluginNames, process.cwd() + '/', options.prod);
     // initial run of watch for ts doesn't output anything so we compile this way
     const configFile = ts.readConfigFile(configFileName, ts.sys.readFile);
     const parsedConfig = ts.parseJsonConfigFileContent(configFile.config, parseConfigHost, './');
@@ -201,6 +202,42 @@ async function build(flags, pluginNames) {
     }
 }
 
-(async () => {
-  await build(cli.flags, cli.input.slice(1));
-})();
+async function upVersion(options) {
+  // make sure there are no other changes so that we don't include them in the upversion commit
+  try {
+    execSync('git diff-index --ignore-submodules --quiet HEAD --').toString();
+  } catch (e) {
+    console.error(`There are uncommitted things. Commit them before running vup.`)
+    return;
+  }
+  // first find a plugin file
+  const parDir = `${options.outDir}/tmp`
+  let files;
+  try {
+    files = fs.readdirSync(parDir);
+  } catch (e) {
+    console.error(`Expected temporary build plugin files in ${parDir}. Try running \`yarn build\` first. We need these to read the .mjs plugins (can't read ts directly for now) and extract a current version.`);
+    return;
+  }
+  const allPluginNames = files.filter(x => !x.startsWith('.') || x.endsWith('.mjs'), {});
+  const anyPluginName = allPluginNames[0];
+  const source = fs.readFileSync(`${parDir}/${anyPluginName}.joined.mjs`).toString();
+  const parsed = new ParsedPlugin(jscodeshift, source);
+  const oldVersion = parsed.getVersion()
+
+  console.log(`latest version of ${anyPluginName}: ${oldVersion}`);
+  const versionSplit = oldVersion.split('.');
+  const newVersion = options.version || `${versionSplit[0]}.${(+versionSplit[1]) + 1}.${versionSplit[2]}`;
+  console.log(`upping to: ${newVersion}`)
+  execSync(`sed -i "s/version: '${oldVersion}'/version: '${newVersion}'/g" src/*/*.ts`);
+  await build({outDir: options.outDir, prod: true});
+  // remove the old plugins
+  try {
+    execSync(`rm dist/*.${oldVersion.replace(/\./g, '-')}.*.ls`);
+  } catch (e) {
+    console.warn("error removing old version's files");
+  }
+  // make an vup commit (version tagging is done by the parent repo -- which determines which commit actually gets into the extension's package)
+  execSync('git add dist');
+  execSync(`git commit -m "Version upped from ${oldVersion} to ${newVersion}" -a`);
+}
