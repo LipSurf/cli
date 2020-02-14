@@ -67,7 +67,7 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, dir='', p
 
 								for (let planAndPart of PLANS_AND_PARTS) {
 									const source = ret.byPlan[i];
-									i++
+									i++;
 									try {
 										const fullName = `${pluginName}.${planAndPart}.js`;
 										bundle[fullName] = {
