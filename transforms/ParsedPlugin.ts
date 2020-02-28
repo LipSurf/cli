@@ -2,7 +2,7 @@
  * Expects js code in es7 form
  */
 import { get } from 'lodash';
-import { JSCodeshift, Identifier, Literal, Property, ObjectProperty, ObjectExpression, VariableDeclarator, ArrayExpression, } from 'jscodeshift';
+import { JSCodeshift, Identifier, Literal, Property, ObjectProperty, ObjectExpression, VariableDeclarator, ArrayExpression, ASTNode, } from 'jscodeshift';
 import { Collection } from 'jscodeshift/src/Collection';
 
 const COMMAND_PROPS_TO_REMOVE = ['fn', 'delay', 'description', 'test', 'global', 'context', 'minConfidence', 'enterContext', 'activeDocument'];
@@ -135,33 +135,48 @@ export default class ParsedPlugin {
     private replaceCmdsAbovePlan(commandsObjs: Collection<ObjectExpression>, pluginPlan: number, buildForPlan: number): boolean {
         let cmdsOnThisPlan: boolean = false;
         const replaced = commandsObjs
-            .filter(cmdObj => {
+            .map(cmdObj => {
                 const planProp = (<Property[]>cmdObj.value.properties).find((prop: Property) => (<Identifier>prop.key).name === 'plan');
+                const cmdPlan  = <number>(<Literal>planProp?.value)?.value;
+                const minNeededPlan = cmdPlan ? cmdPlan : pluginPlan;
+                // @ts-ignore
+                cmdObj.data = {
+                    planProp,
+                    cmdPlan,
+                    minNeededPlan,
+                };
+                return cmdObj
+            }, this.j.Property)
+            .filter(cmdObj => {
+                // @ts-ignore
+                const {planProp, cmdPlan, minNeededPlan} = cmdObj.data;
                 if (!planProp) {
                     if (pluginPlan === buildForPlan)
                         cmdsOnThisPlan = true;
                     else if (pluginPlan > buildForPlan) 
                         return true;
                 } else {
-                    const cmdPlan  = <number>(<Literal>planProp.value).value;
                     if (buildForPlan === cmdPlan)
                         cmdsOnThisPlan = true;
-                    if (Math.max(pluginPlan, cmdPlan) > buildForPlan)
+                    if (minNeededPlan > buildForPlan)
                         return true;
                 }
                 return false;
             })
             .map(cmdObj => {
+                // @ts-ignore
+                const { minNeededPlan } = cmdObj.data;
                 const pageFnProp = (<Property[]>cmdObj.value.properties).find((prop: Property) => (<Identifier>prop.key).name === 'pageFn');
                 if (!pageFnProp) {
-                    cmdObj.node.properties.push(this.j.property('init', this.j.identifier('pageFn'), this.j.template.expression`showNeedsUpgradeError`));
+                    cmdObj.node.properties.push(this.j.property('init', this.j.identifier('pageFn'), this.j.template.expression`()=>showNeedsUpgradeError({plan: ${minNeededPlan.toString()}})`));
                 }
                 return cmdObj;
             }, this.j.Property)
             .find(this.j.Property, { key: { name: `pageFn` } })
             .find(this.j.ArrowFunctionExpression)
+            // @ts-ignore
+            .replaceWith(cmdObj => this.j.template.expression`()=>showNeedsUpgradeError({plan: ${cmdObj.parent.parent.data?.minNeededPlan.toString()}})`)
             ;
-        replaced.replaceWith(this.j.template.expression`showNeedsUpgradeError`);
         
         // if nothing is replaced, and the highestLevel is lower than build for plan, then return false so we
         // don't build for this level (the highest level might have been 10 or 0, and already built)
