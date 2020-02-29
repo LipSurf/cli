@@ -227,7 +227,7 @@ async function upVersion(options) {
 
   console.log(`latest version of ${anyPluginName}: ${oldVersion}`);
   const versionSplit = oldVersion.split('.');
-  const newVersion = options.version || `${versionSplit[0]}.${(+versionSplit[1]) + 1}.${versionSplit[2]}`;
+  const newVersion = options.version || `${versionSplit[0]}.${(+versionSplit[1]) + 1}.0`;
   console.log(`upping to: ${newVersion}`)
   execSync(`sed -i "s/version: '${oldVersion}'/version: '${newVersion}'/g" src/*/*.ts`);
   await build({outDir: options.outDir, prod: true});
