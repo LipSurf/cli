@@ -226,8 +226,8 @@
         "signature": "21e5b3d0adcbd62a75058fdf12c3594eba18334dcaaa20cbb5b0f0c85d9f8bf8"
       },
       "../transforms/ParsedPlugin.ts": {
-        "version": "e556f9e0c52b4a157f40db5a7547cf4d54aeb7edfe069504785f89e07ef3ff2f",
-        "signature": "466d875c7c74d58a0c182e87c39bef998e8137d0187f6056c761f404b2c02711"
+        "version": "4a168b2d3bab85c41b0e2c6d254d7f81c645c4fe45e5dd435decd09ec777d95b",
+        "signature": "420d30d000d7b52dadc0995e52fddbd9a49608003b8f69678c7028851eaffa8a"
       },
       "../transforms/split.ts": {
         "version": "5c31f7fc76a473bb279ad2e0362f042150b1c335774999354824c8f5c449394a",

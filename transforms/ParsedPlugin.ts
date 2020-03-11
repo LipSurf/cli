@@ -90,7 +90,7 @@ export default class ParsedPlugin {
         const commandsProps = this.getCommandsProps(commandsObjs);
 
         // if there's no commands, and no init and destroy this plugin can be blank
-        if (commandsProps.size() === 0 && !this.getTopLevelProp('init') && !this.getTopLevelProp('destroy')) 
+        if (commandsProps.size() === 0 && !this.getTopLevelLiteral('init') && !this.getTopLevelLiteral('destroy')) 
             return '';
 
         this.removeSimplePluginProps();
@@ -206,41 +206,48 @@ export default class ParsedPlugin {
     }
 
     private getTopLevelProp(name: string) {
-        const topLevelProp = this.pluginDef
+        return this.pluginDef
             .find(this.j.Property, { key: { name }})
             .filter(x => x.parentPath.node == this.pluginDef.get(0).node.init.properties[1].argument)
+            ;
+    }
+
+    private getTopLevelLiteral(name: string) {
+        const topLevelProp = this.getTopLevelProp(name)
             .find(this.j.Literal)
             ;
         return topLevelProp.length ? topLevelProp.get(0).node.value : undefined;
     }
 
     private getPluginPlan(): number {
-        return this.getTopLevelProp('plan') || 0;
+        return this.getTopLevelLiteral('plan') || 0;
     }
 
     private getCommandsColl(): Collection<ArrayExpression> {
-        return this.pluginDef
-            .find(this.j.Property, { key: { name: `commands` } })
+        const cmds = this.getTopLevelProp('commands')
             .find(this.j.ArrayExpression)
             .at(0)
             ;
+        return cmds;
     }
 
     private getCommandsObjs(commandsColl: Collection<ArrayExpression>): Collection<ObjectExpression> {
-        return commandsColl.find(this.j.ObjectExpression)
+        const cmdObjs = commandsColl.find(this.j.ObjectExpression)
             // restrict to the correct depth
             .filter(x => x.parentPath.parentPath === commandsColl.get(0).parentPath)
             ;
+        return cmdObjs;
     }
 
     private getCommandsProps(commandsObjs: Collection<ObjectExpression>): Collection<Property> {
-        return commandsObjs.map(cmdPath =>
+        const cmdProps = commandsObjs.map(cmdPath =>
             this.j(cmdPath)
                 .find(this.j.Property)
                 .filter(p => get(p, 'parentPath.parentPath.parentPath.parentPath.parentPath.value.key.name') === 'commands')
                 .paths()
             , this.j.Property)
         ;
+        return cmdProps;
     }
 
     private transformMatchStrs(commandsProps: Collection<Property>) {
