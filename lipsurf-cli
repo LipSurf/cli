@@ -203,9 +203,9 @@ async function build(options, plugins) {
 }
 
 async function upVersion(options) {
-  // make sure there are no other changes so that we don't include them in the upversion commit
+  // make sure there are no unexpected changes so that we don't include them in the upversion commit
   try {
-    execSync('git diff-index --ignore-submodules --quiet HEAD --').toString();
+    execSync('git diff-index --ignore-submodules --quiet HEAD -- ./').toString();
   } catch (e) {
     console.error(`There are uncommitted things. Commit them before running vup.`)
     return;
@@ -238,6 +238,7 @@ async function upVersion(options) {
     console.warn("error removing old version's files");
   }
   // make an vup commit (version tagging is done by the parent repo -- which determines which commit actually gets into the extension's package)
-  execSync('git add dist');
-  execSync(`git commit -m "Version upped from ${oldVersion} to ${newVersion}" -a`);
+  execSync('git add src dist');
+  // no longer doing this in the mono repo
+  // execSync(`git commit -m "Version upped from ${oldVersion} to ${newVersion}" -a`);
 }
