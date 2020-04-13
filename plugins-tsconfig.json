@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "noEmitOnError": true,
+    "allowSyntheticDefaultImports": true,
     "incremental": true,
     "noImplicitAny": false,
     "strict": true,
