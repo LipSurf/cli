@@ -2,8 +2,9 @@ const ParsedPlugin = require('./lib/ParsedPlugin').default;
 const jscodeshift = require('jscodeshift');
 
 // using "__MSG_@@extension_id__" doesn't work here
-const importPluginBase = `import PluginBase from 'chrome-extension://lnnmjmalakahagblkkcnjkoaihlfglon/dist/modules/plugin-base.js';`;
-const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://lnnmjmalakahagblkkcnjkoaihlfglon/dist/modules/extension-util.js';`;
+const EXT_ID = 'lnnmjmalakahagblkkcnjkoaihlfglon'
+const importPluginBase = `import PluginBase from 'chrome-extension://${EXT_ID}/dist/modules/plugin-base.js';`;
+const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://${EXT_ID}/dist/modules/extension-util.js';`;
 const SPLITTER = '\vLS-SPLIT';
 
 const PART_NAMES = ['backend', 'matching.cs', 'nonmatching.cs'];
