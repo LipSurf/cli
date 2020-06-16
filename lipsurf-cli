@@ -20,6 +20,7 @@ program
   .command('build [...PLUGINS]')
   .description('build lipsurf plugins')
   .option('-w, --watch')
+  .option('--no-base-imports')
   .action(async (plugins, cmdObj) => {
     await build({...cmdObj, ...cmdObj.parent}, plugins);
   });
@@ -162,6 +163,11 @@ async function build(options, plugins) {
       plugins = [];
     let pluginNames = [].concat(plugins);
     const watch = options.watch;
+    // import PluginBase and/or ExtensionUtil 
+    // if this is off, assume they already exist in global scope
+    // (useful for turning off when importing plugins in LipSurf.js 
+    // where chrome-extension://.../plugin-base.js module obviously doesn't exist)
+    const baseImports = options.baseImports;
     const timeStart = new Date();
     const globbedTs = globby.sync(['src/*/*.ts', '!src/*/*.*.ts', '!src/@types']);
     if (!pluginNames.length) {
@@ -170,7 +176,7 @@ async function build(options, plugins) {
          .filter(regxRes => regxRes && regxRes[1] === regxRes[2])
          .map(regxRes => regxRes[1])));
     }
-    const rollupConfig = await getConfig(options.outDir, pluginNames, process.cwd() + '/', options.prod);
+    const rollupConfig = await getConfig(options.outDir, pluginNames, process.cwd() + '/', options.prod, baseImports);
     // initial run of watch for ts doesn't output anything so we compile this way
     const configFile = ts.readConfigFile(configFileName, ts.sys.readFile);
     const parsedConfig = ts.parseJsonConfigFileContent(configFile.config, parseConfigHost, './');

@@ -13,7 +13,7 @@ function versionConvertDots(v) {
 	return v.replace(/\./g, '-')
 }
 
-module.exports = function makeCS() {
+module.exports = function makeCS(baseImports = true) {
     return {
         name: 'make-cs', // this name will show up in warnings and errors
         generateBundle(options, bundle, isWrite) {
@@ -49,8 +49,11 @@ module.exports = function makeCS() {
                         const newFileName = `${pluginId}.${version}.${plan}.ls`;
                         // console.log('whitelisting', newFileName, matchingCS.substr(0, 10).length, nonMatchingCS.substr(0, 10).length)
                         whitelistedKeys.push(newFileName);
-                        bundle[matchingFilename].code = importPluginBase
-                                + importExtensionUtil
+                        let baseImportsStr = '';
+                        if (baseImports) {
+                            baseImportsStr = importPluginBase + importExtensionUtil;
+                        }
+                        bundle[matchingFilename].code = baseImportsStr
                                 + backend
                                 + SPLITTER
                                 + matchingCS
