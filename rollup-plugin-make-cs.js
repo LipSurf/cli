@@ -2,7 +2,8 @@ const ParsedPlugin = require('./lib/ParsedPlugin').default;
 const jscodeshift = require('jscodeshift');
 
 // using "__MSG_@@extension_id__" doesn't work here
-const EXT_ID = 'lnnmjmalakahagblkkcnjkoaihlfglon'
+// can be overriden with EXT_ID
+const EXT_ID = process.env.EXT_ID || 'lnnmjmalakahagblkkcnjkoaihlfglon';
 const importPluginBase = `import PluginBase from 'chrome-extension://${EXT_ID}/dist/modules/plugin-base.js';`;
 const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://${EXT_ID}/dist/modules/extension-util.js';`;
 const SPLITTER = '\vLS-SPLIT';
