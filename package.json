@@ -11,7 +11,7 @@
   "dependencies": {
     "commander": "^4.1.1",
     "jscodeshift": "https://github.com/mikob/jscodeshift#js-api",
-    "rollup": "^1.21.4",
+    "rollup": "~1.21.4",
     "rollup-plugin-commonjs": "^10.0.0",
     "rollup-plugin-html": "^0.2.1",
     "rollup-plugin-multi-entry": "https://github.com/mikob/rollup-plugin-multi-entry",
@@ -29,7 +29,7 @@
     "@types/node": "^12.12.24",
     "@types/tmp": "^0.1.0",
     "globby": "^9.2.0",
-    "typescript": "^3.7.5"
+    "typescript": "~3.7.5"
   },
   "engines": {
     "node": ">=12.0.0"
