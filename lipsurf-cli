@@ -213,8 +213,7 @@ async function upVersion(options) {
   try {
     execSync('git diff-index --ignore-submodules --quiet HEAD -- ./').toString();
   } catch (e) {
-    console.error(`There are uncommitted things. Commit them before running vup.`)
-    return;
+    throw new Error(`There are uncommitted things. Commit them before running vup.`)
   }
   // first find a plugin file
   const parDir = `${options.outDir}/tmp`
@@ -222,8 +221,7 @@ async function upVersion(options) {
   try {
     files = fs.readdirSync(parDir);
   } catch (e) {
-    console.error(`Expected temporary build plugin files in ${parDir}. Try running \`yarn build\` first. We need these to read the .mjs plugins (can't read ts directly for now) and extract a current version.`);
-    return;
+    throw new Error(`Expected temporary build plugin files in ${parDir}. Try running \`yarn build\` first. We need these to read the .mjs plugins (can't read ts directly for now) and extract a current version.`);
   }
   const allPluginNames = files.filter(x => !x.startsWith('.') || x.endsWith('.mjs'), {});
   const anyPluginName = allPluginNames[0];
