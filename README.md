@@ -1,10 +1,7 @@
 lipsurf-cli
 ===========
 
-To debug split.ts:
-Go into the project with example plugins: 
-$ node --inspect-brk ./node_modules/lipsurf-cli/lipsurf-cli build
-
+## Create plugin file
 
 ```
 USAGE
@@ -19,7 +16,7 @@ EXAMPLE
 ```
 
 
-## `lipsurf-cli build`
+## Build plugin 
 
 ```
 	Usage
@@ -28,7 +25,17 @@ EXAMPLE
 	Options
     --watch
     --out-dir/-o
+    --no-base-imports
 
 	Examples
 	  $ lipsurf-cli build --watch
 ```
+
+# Debugging
+To debug ParsedPlugin.ts:
+
+1) Go into a project with LipSurf plugins.
+
+2) `$ node --inspect-brk ./node_modules/lipsurf-cli/lipsurf-cli build`
+
+
