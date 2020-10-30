@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "noEmitOnError": true,
+    "allowSyntheticDefaultImports": true,
+    "incremental": true,
+    "noImplicitAny": false,
+    "strict": true,
+    "noResolve": false,
+    "moduleResolution": "node",
+    "target": "ES2018"
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
