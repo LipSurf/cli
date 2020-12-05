@@ -21,19 +21,18 @@ program
   .description('build lipsurf plugins')
   .option('-w, --watch')
   .option('--no-base-imports')
-  .action(async (plugins, cmdObj) => {
-    await build({...cmdObj, ...cmdObj.parent}, plugins);
-  });
+  .action((plugins, cmdObj) => 
+    build({...cmdObj, ...cmdObj.parent}, plugins)
+  );
 
 program
   .command('vup')
   .description('up the minor version of all the plugins')
   .option('-v, --version <version>', 'specify a version instead of incrementing the minor version by 1')
-  .action(async (cmdObj) => {
-    await upVersion({...cmdObj, ...cmdObj.parent});
-  });
+  .action(cmdObj => upVersion({...cmdObj, ...cmdObj.parent})
+  );
 
-program.parse(process.argv);
+program.parseAsync(process.argv).catch(e => { console.error(e); process.exit(1) });
 
 const parseConfigHost /* : any */ = {
   fileExists: ts.sys.fileExists,
