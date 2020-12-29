@@ -386,14 +386,22 @@ export default class ParsedPlugin {
         .value.value;
       const addLangs = otherLangs
         .map((lang) => {
-          let matchFn = langCmdsByLang[lang]
-            .find(this.j.Property, { key: { value: cmdName } })
-            .find(this.j.Property, { key: { name: "fn" } });
-          if (matchFn.length) {
+          let matchFn = langCmdsByLang[lang].find(this.j.Property, {
+            key: { value: cmdName },
+          });
+
+          // HACK
+          if (!matchFn.length) {
+            matchFn = langCmdsByLang[lang].find(this.j.Property, {
+              key: { name: cmdName },
+            });
+          }
+          let step2 = matchFn.find(this.j.Property, { key: { name: "fn" } });
+          if (step2.length) {
             return this.j.property(
               "init",
               this.j.identifier(lang),
-              matchFn.get(0).node.value
+              step2.get(0).node.value
             );
           }
         })
