@@ -240,9 +240,11 @@ async function upVersion(options) {
   try {
     files = fs.readdirSync(parDir);
   } catch (e) {
-    throw new Error(
-      `Expected temporary build plugin files in ${parDir}. Try running \`yarn build\` first. We need these to read the .mjs plugins (can't read ts directly for now) and extract a current version.`
+    console.warn(
+      `Expected temporary build plugin files in ${parDir}. Running \`yarn build\` first. We need these to read the .mjs plugins (can't read ts directly for now) and extract a current version.`
     );
+    execSync("yarn build");
+    files = fs.readdirSync(parDir);
   }
   const allPluginNames = files.filter(
     (x) => !x.startsWith(".") || x.endsWith(".mjs"),
