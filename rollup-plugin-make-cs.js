@@ -26,6 +26,8 @@ module.exports = function makeCS(baseImports = true) {
 
                 for (let plan of [0, 10, 20]) {
                     const matchingFilename = keys.find(x => x.includes(`${plan}.matching.`));
+                    if (!matchingFilename) 
+                        throw new Error(`Could not find matching file name in ${keys}`);
                     const splitted = matchingFilename.split('.')
                     const pluginId = splitted[0];
 
