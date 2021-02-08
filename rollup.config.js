@@ -5,6 +5,9 @@ const resolve = require("rollup-plugin-node-resolve");
 const commonjs = require('rollup-plugin-commonjs');
 const fs = require('fs');
 const jscodeshift = require('jscodeshift');
+const { getDotEnv } = require('lipsurf-common/cjs/dev');
+const define = require("rollup-plugin-define");
+const transform = require('lodash/transform');
 
 const makeCS = require('./rollup-plugin-make-cs');
 
@@ -13,6 +16,14 @@ const split = require('./lib/split');
 const PROD = process.env.NODE_ENV === 'production';
 const PLANS = [0, 10, 20];
 const PLANS_AND_PARTS = ['backend', ...[].concat.apply([], ['matching.cs', 'nonmatching.cs'].map(cs => PLANS.map(plan => `${plan}.${cs}`)))];
+let dotEnv, envFile;
+try {
+	envFile = PROD ? '.env' : '.env.development';
+	dotEnv = getDotEnv(envFile);
+} catch (e) {
+	console.warn(`Could not find ${envFile}`);
+	dotEnv = {};
+}
 
 module.exports = async function getConfig(finalOutputDir, pluginNames, dir='', prod=PROD, baseImports=true) {
 	return (await Promise.all(pluginNames.map(async pluginName => {
@@ -41,6 +52,12 @@ module.exports = async function getConfig(finalOutputDir, pluginNames, dir='', p
 					preferBuiltins: false,
 				}),
 				commonjs(),
+				define({
+					replacements: {
+						...transform(dotEnv, (r, val, key) => r[`process.env.${key}`] = `"${val.replace('"', '\\"')}"`),
+						NODE_ENV: PROD ? 'production' : 'development',
+					},
+				}),
 			],
 			output: {
 				// garbage since we use jscodeshift on the cmd line
