@@ -8,6 +8,7 @@ const jscodeshift = require('jscodeshift');
 const { getDotEnv } = require('lipsurf-common/cjs/dev');
 const define = require("rollup-plugin-define");
 const transform = require('lodash/transform');
+const path = require('path');
 
 const makeCS = require('./rollup-plugin-make-cs');
 
@@ -16,16 +17,22 @@ const split = require('./lib/split');
 const PROD = process.env.NODE_ENV === 'production';
 const PLANS = [0, 10, 20];
 const PLANS_AND_PARTS = ['backend', ...[].concat.apply([], ['matching.cs', 'nonmatching.cs'].map(cs => PLANS.map(plan => `${plan}.${cs}`)))];
-let dotEnv, envFile;
-try {
-	envFile = PROD ? '.env' : '.env.development';
-	dotEnv = getDotEnv(envFile);
-} catch (e) {
-	console.warn(`Could not find ${envFile}`);
-	dotEnv = {};
-}
 
 module.exports = async function getConfig(finalOutputDir, pluginNames, dir='', prod=PROD, baseImports=true) {
+	let dotEnv, envFile = PROD ? '.env' : '.env.development';
+	let path1, path2;
+	try {
+		path1 = `${dir}${envFile}`;
+		dotEnv = getDotEnv(path1);
+	} catch (e) {
+		try {
+			path2 = `${path.join(path.dirname(path.dirname(path1)), envFile)}`;
+			dotEnv = getDotEnv(path2);
+		} catch (e2) {
+			console.warn(`Could not find ${path1} or ${path2}`);
+			dotEnv = {};
+		}
+	}
 	return (await Promise.all(pluginNames.map(async pluginName => {
 		// const pluginVersion = babelParser.parse(`src/${pluginName}/${pluginName}.ts`, {
 		// 	sourceType: 'module',
