@@ -1,14 +1,14 @@
-#!/usr/bin/env node
+#!/bin/sh
+":"; //# comment; exec /usr/bin/env node --experimental-vm-modules "$0" "$@"
 "use strict";
 const program = require("commander");
-const rollup = require("rollup");
-const getConfig = require("./rollup.config");
 const globby = require("globby");
 const ts = require("typescript");
-const fs = require("fs");
+const fs = require("fs").promises;
 const jscodeshift = require("jscodeshift");
 const execSync = require("child_process").execSync;
 const ParsedPlugin = require("./lib/ParsedPlugin").default;
+const vm = require("vm"); // (useful for turning off when importing plugins in LipSurf.js
 
 const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
 
@@ -31,11 +31,6 @@ program
     "specify a version instead of incrementing the minor version by 1"
   )
   .action((cmdObj) => upVersion({ ...cmdObj, ...cmdObj.parent }));
-
-program.parseAsync(process.argv).catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
 
 const parseConfigHost /* : any */ = {
   fileExists: ts.sys.fileExists,
@@ -154,17 +149,67 @@ function reportWatchStatusChanged(diagnostic) {
   console.info(ts.formatDiagnostic(diagnostic, formatHost));
 }
 
+class Linker {
+  resolver;
+
+  constructor(resolver, basedir) {
+    this.resolver = resolver;
+    this.basedir = basedir;
+  }
+  async link(specifier, referencingModule) {
+    try {
+      console.log(
+        "baseDir",
+        this.basedir,
+        "specifier",
+        specifier,
+        "referencing module",
+        referencingModule
+      );
+      // let filePath;
+      // if (specifier.startsWith(".")) {
+      //   filePath = `${specifier}.js`;
+      // } else {
+      //   filePath = `./node_modules/${specifier}`;
+      // }
+      const filePath = await new Promise((cb) =>
+        this.resolver(
+          specifier,
+          {
+            basedir: this.basedir,
+          },
+          (err, res) => cb(res)
+        )
+      );
+      console.log("filepath", filePath);
+      const file = await fs.readFile(filePath, "utf8");
+      console.log("context", referencingModule.context);
+      return new vm.SourceTextModule(file, {
+        context: referencingModule.context,
+      });
+    } catch (e) {
+      throw new Error(`Error linking ${specifier}`, e);
+    }
+    // Using `contextifiedObject` instead of `referencingModule.context`
+    // here would work as well.
+  }
+}
+
 async function build(options, plugins) {
+  const EsBuild = require("esbuild");
+  const resolve = require("resolve");
+
   if (typeof plugins === "undefined") plugins = [];
   let pluginNames = [].concat(plugins);
   const watch = options.watch;
   // import PluginBase and/or ExtensionUtil
   // if this is off, assume they already exist in global scope
-  // (useful for turning off when importing plugins in LipSurf.js
   // where chrome-extension://.../plugin-base.js module obviously doesn't exist)
   const baseImports = options.baseImports;
   const timeStart = new Date();
-  const globbedTs = globby.sync(["src/*/*.ts", "!src/*/*.*.ts", "!src/@types"]);
+  // const globbedTs = globby.sync(["src/*/*.ts", "!src/*/*.*.ts", "!src/@types"]);
+  const globbedTs = globby.sync("dist/tmp/*/*.js");
+  // const globbedTs = globby.sync(["src/*/*.ts", "!src/@types"]);
   if (!pluginNames.length) {
     pluginNames = Array.from(
       new Set(
@@ -175,46 +220,77 @@ async function build(options, plugins) {
       )
     );
   }
-  const rollupConfig = await getConfig(
-    options.outDir,
-    pluginNames,
-    process.cwd() + "/",
-    options.prod,
-    baseImports
-  );
-  // initial run of watch for ts doesn't output anything so we compile this way
-  const configFile = ts.readConfigFile(configFileName, ts.sys.readFile);
-  const parsedConfig = ts.parseJsonConfigFileContent(
-    configFile.config,
-    parseConfigHost,
-    "./"
-  );
-  compile(parsedConfig);
+  // options.outDir, pluginNames, process.cwd() + "/", options.prod, baseImports;
+  console.log("globbedTs", globbedTs);
+
   if (watch) {
-    watchTs();
-    const watcher = rollup.watch(rollupConfig);
-    watcher.on("event", (event) => {
-      switch (event.code) {
-        case "END":
-          console.log("Done building. Watching...");
-          break;
-        case "ERROR":
-        case "FATAL":
-          console.log(event.code, event.error);
-          break;
-      }
-    });
   } else {
-    const tsTimeEnd = new Date();
-    console.log(
-      `Done with ts compile after ${Math.round(
-        (tsTimeEnd - timeStart) / 1000
-      )} seconds.`
-    );
-    for (let conf of rollupConfig) {
-      const bundle = await rollup.rollup(conf);
-      await bundle.generate(conf);
-      await bundle.write(conf);
+    // console.log("pluginNames", pluginNames);
+    for (const pluginName of pluginNames) {
+      const pluginWLanguageFiles = globbedTs
+        .filter((x) => x.substr(x.lastIndexOf("/")).includes(pluginName))
+        .sort((a, b) => a.length - b.length);
+      const linker = new Linker(
+        resolve,
+        pluginWLanguageFiles[0].substr(
+          0,
+          pluginWLanguageFiles[0].lastIndexOf("/")
+        )
+      );
+      // const codeParts = await Promise.all(
+      //   pluginWLanguageFiles.map((f) => fs.readFile(f, { encoding: "utf8" }))
+      // );
+      console.log("globbed pluginNames", pluginWLanguageFiles);
+      // make a temporary ts file that imports the other langs
+      // (to avoid dupe names when just conjoining the plugins)
+      // const transformed = EsBuild.buildSync({
+      //   entryPoints: ,
+      //   bundle: true,
+      //   outdir: options.outDir,
+      // });
+
+      // console.log("transformed", transformed);
+      // const codeParts = await Promise.all(
+      //   pluginWLanguageFiles.map((f) => fs.readFile(f, { encoding: "utf8" }))
+      // );
+      const codeParts = [
+        ...pluginWLanguageFiles.map((x, i) => {
+          const name = x.substring(x.lastIndexOf("/") + 1, x.length - 3);
+          return i === 0
+            ? `import plugin from "./${name}";`
+            : `import "./${name}";`;
+        }),
+        `export default plugin;`,
+      ];
+
+      const context = {
+        // this: {},
+        global: {},
+        exports: {},
+        module: {
+          exports: {},
+        },
+        PluginBase: {
+          languages: {},
+        },
+      };
+      vm.createContext(context);
+      const finalScript = codeParts.join("\n");
+      console.log("codeParts", finalScript);
+      const mod = new vm.SourceTextModule(finalScript, { context });
+      try {
+        await mod.link(linker.link.bind(linker));
+      } catch (e) {
+        console.error(`linking error`, e);
+      }
+      await mod.evaluate();
+      console.log("mod", mod, "context", context, "namespace", mod.namespace);
+
+      // EsBuild.build({
+      //   entryPoints: ,
+      //   bundle: true,
+      //   outdir: options.outDir,
+      // }).catch(() => process.exit(1));
     }
     const timeEnd = new Date();
     console.log(
@@ -277,3 +353,8 @@ async function upVersion(options) {
   // no longer doing this in the mono repo
   // execSync(`git commit -m "Version upped from ${oldVersion} to ${newVersion}" -a`);
 }
+
+program.parseAsync(process.argv).catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
