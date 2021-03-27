@@ -1,6 +1,6 @@
 /// <reference types="lipsurf-types/extension"/>
-import { PLANS } from "lipsurf-common/cjs/constants";
-import { buildSync } from "esbuild";
+import { PLANS, PLUGIN_SPLIT_SEQ, EXT_ID } from "lipsurf-common/cjs/constants";
+import { build } from "esbuild";
 import {
   ExportDefaultExpression,
   ExportDefaultSpecifier,
@@ -8,43 +8,116 @@ import {
   KeyValueProperty,
   Module,
   ModuleDeclaration,
-  transformSync,
+  transform,
+  parse,
+  parseSync,
+  printSync,
 } from "@swc/core";
+const importPluginBase = `import PluginBase from 'chrome-extension://${EXT_ID}/dist/modules/plugin-base.js';`;
+const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://${EXT_ID}/dist/modules/extension-util.js';`;
 
 declare let showNeedsUpgradeError: any;
 
-export function make(source: string, resolveDir: string = __dirname) {
+function versionConvertDots(v) {
+  return v.replace(/\./g, "-");
+}
+
+export async function make(
+  pluginId: string,
+  source: string,
+  langPlugins: string[],
+  resolveDir: string = __dirname,
+  baseImports = true
+) {
   // const [freePlugin, plusPlugin, premPlugin] = PLANS.map((plan) =>
   //   replaceCmdsAbovePlan(plugin, plan)
   // );
-  const { code, map } = transformSync(source, {
-    jsc: {
-      target: "es2019",
-    },
-    plugin: (m) => new ConsoleStripper().visitProgram(m),
-  });
-  console.log("before transform:", code);
-  const transformed = buildSync({
-    // entryPoints: ,
-    // outdir: options.outDir,
-    stdin: {
-      contents: code,
-      sourcefile: "dumby.js",
-      resolveDir,
-      loader: "js",
-    },
-    write: false,
-    bundle: true,
-    minify: true,
-    minifyWhitespace: true,
-    minifySyntax: true,
-    target: "es2019",
-  });
+  console.log("langPlugins", langPlugins);
+  source += langPlugins
+    .map(
+      (langPlugin) =>
+        `import ".${langPlugin.substr(
+          langPlugin.lastIndexOf("/"),
+          langPlugin.lastIndexOf(".")
+        )}";`
+    )
+    .join("");
+  const transformedPluginsTuple = [
+    source,
+    ...(
+      await Promise.all(
+        [true, false].map((isMatching) =>
+          transform(source, {
+            jsc: {
+              target: "es2020",
+            },
+            plugin: (m) => new ConsoleStripper(isMatching).visitProgram(m),
+          }).catch((e) => {
+            if (e instanceof BlankError) return { code: "" };
+            throw e;
+          })
+        )
+      )
+    ).map((p) => p.code),
+  ];
+  console.log("after transform:\n", transformedPluginsTuple[1]);
+  console.log("after transform (nonmatching):\n", transformedPluginsTuple[2]);
 
-  console.log(
-    "after transform:",
-    new TextDecoder().decode(transformed.outputFiles[0].contents)
-  );
+  const splitPluginTuple = (
+    await Promise.all(
+      transformedPluginsTuple.map((code) =>
+        build({
+          // entryPoints: ,
+          // outdir: options.outDir,
+          stdin: {
+            contents: code,
+            sourcefile: `${pluginId}.js`,
+            resolveDir,
+            loader: "js",
+          },
+          write: false,
+          bundle: true,
+          // for iife
+          // globalName: `allPlugins.${pluginId}`,
+          // minify: true,
+          format: "esm",
+          minifyWhitespace: false,
+          minifySyntax: true,
+          // defaults to esNext (we build to the target with tsc)
+          // target: "es2019",
+        })
+      )
+    )
+  ).map((f) => new TextDecoder().decode(f.outputFiles[0].contents));
+
+  // console.log(splitPluginTuple[0]);
+
+  // console.log("after transform:");
+  let baseImportsStr = "";
+  if (baseImports) {
+    baseImportsStr = importPluginBase + importExtensionUtil;
+  }
+
+  // combine the files into .ls file
+  return [
+    baseImportsStr,
+    splitPluginTuple
+      .map(
+        (s) =>
+          `allPlugins.${pluginId} = (() => { ${s.replace(
+            `export default require_${pluginId}()`,
+            `return require_${pluginId}().default`
+          )} })();`
+        // new TextDecoder()
+        //   .decode(f.outputFiles[0].contents)
+        //   // .replace(
+        //   //   `default: () => ${pluginId}_default`,
+        //   //   `default: ${pluginId}_default`
+        //   // )
+        //   .replace("var allPlugins = allPlugins || {};", "") +
+      )
+      .join(PLUGIN_SPLIT_SEQ),
+  ].join("");
 }
 
 /**
@@ -90,6 +163,7 @@ import {
   ArrayExpression,
 } from "@swc/core";
 import Visitor from "@swc/core/Visitor";
+import { pbkdf2 } from "crypto";
 
 const PLUGIN_PROPS_TO_REMOVE_FROM_CS = [
   "description",
@@ -120,6 +194,14 @@ const COMMAND_PROPS_TO_REMOVE_FROM_CS = [
   "activeDocument",
 ];
 
+// SpreadElement doesn't have generic
+interface WrappedExpression<T> {
+  spread: null;
+  expression: T;
+}
+
+class BlankError extends Error {}
+
 class ConsoleStripper extends Visitor {
   // no good be
   // visitProperty(node: Property): Property {
@@ -128,6 +210,56 @@ class ConsoleStripper extends Visitor {
   //     console.log("key", node.key, "val", node.value);
   //   return node;
   // }
+  constructor(private isMatching: boolean) {
+    super();
+  }
+
+  /**
+   * Keyed by command name
+   * @param cmds
+   * @returns
+   */
+  private commandArrayToObject(cmds: ArrayExpression): ObjectExpression {
+    return (<WrappedExpression<ObjectExpression>[]>(
+      (<unknown>cmds.elements)
+    )).reduce(
+      (memo, cmd) => {
+        // only the name property? Blank command
+        if (cmd.expression.properties.length === 1) return memo;
+        const namePropI = cmd.expression.properties.findIndex(
+          (p) =>
+            p.type === "KeyValueProperty" &&
+            p.key.type === "Identifier" &&
+            p.key.value === "name"
+        )!;
+        const nameProp = <KeyValueProperty>(
+          cmd.expression.properties.splice(namePropI, 1)[0]
+        );
+        // const nameProp = cmd.expression.properties[namePropI];
+        // @ts-ignore
+        memo.properties.push({
+          type: "KeyValueProperty",
+          key: {
+            type: "StringLiteral",
+            hasEscape: false,
+            kind: { type: "normal", containsQuote: true },
+            // @ts-ignore
+            span: nameProp.value.span,
+            // @ts-ignore
+            value: nameProp.value.value,
+          },
+          span: cmds.span,
+          value: cmd.expression,
+        });
+        return memo;
+      },
+      {
+        type: "ObjectExpression",
+        properties: <any[]>[],
+        span: cmds.span,
+      }
+    );
+  }
 
   visitExportDefaultExpression(n: ExportDefaultExpression): ModuleDeclaration {
     if (n.expression.type === "ObjectExpression") {
@@ -155,29 +287,53 @@ class ConsoleStripper extends Visitor {
                 PLUGIN_PROPS_TO_REMOVE_FROM_CS.includes(prop.key.value))
             )
         );
-        const commandsProp = <ArrayExpression>(
-          (<KeyValueProperty | undefined>(
-            pluginProps.find(
-              (p) =>
-                p.type === "KeyValueProperty" &&
-                p.key.type === "Identifier" &&
-                p.key.value === "commands"
-            )
-          ))?.value
+        const commandsProp = <KeyValueProperty | undefined>(
+          pluginProps.find(
+            (p) =>
+              p.type === "KeyValueProperty" &&
+              p.key.type === "Identifier" &&
+              p.key.value === "commands"
+          )
         );
         if (commandsProp) {
-          commandsProp.elements.forEach((e: any) => {
+          const commandsArr = <ArrayExpression>commandsProp.value;
+          // only global commands
+          if (!this.isMatching) {
+            // @ts-ignore
+            commandsArr.elements = commandsArr.elements.filter((e: any) =>
+              e.expression.properties.find(
+                (p) =>
+                  p.type === "KeyValueProperty" &&
+                  p.key.type === "Identifier" &&
+                  p.key.value === "global" &&
+                  p.value.type === "BooleanLiteral" &&
+                  p.value.value
+              )
+            );
+          }
+          commandsArr.elements.forEach((e: any) => {
             e.expression.properties = e.expression.properties.filter(
               (p: KeyValueProperty) => {
-                if (
-                  p.key.type === "Identifier" &&
-                  COMMAND_PROPS_TO_REMOVE_FROM_CS.includes(p.key.value)
-                )
-                  return false;
+                if (p.key.type === "Identifier") {
+                  if (COMMAND_PROPS_TO_REMOVE_FROM_CS.includes(p.key.value))
+                    return false;
+                  else if (
+                    p.key.value === "match" &&
+                    ["StringLiteral", "ArrayExpression"].includes(p.value.type)
+                  )
+                    return false;
+                }
                 return true;
               }
             );
           });
+          const newCmds = this.commandArrayToObject(commandsArr);
+          debugger;
+          if (newCmds.properties.length === 0) {
+            throw new BlankError();
+          } else {
+            commandsProp.value = newCmds;
+          }
         }
       }
     }

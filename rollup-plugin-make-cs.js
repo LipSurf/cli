@@ -19,6 +19,7 @@ module.exports = function makeCS(baseImports = true) {
         name: 'make-cs', // this name will show up in warnings and errors
         generateBundle(options, bundle, isWrite) {
             if (isWrite) {
+                console.time('makeCS');
                 // files can likely be removed from the bundle
                 const keys = Object.keys(bundle);
                 const whitelistedKeys = [];
@@ -71,6 +72,7 @@ module.exports = function makeCS(baseImports = true) {
                     .forEach(key => {
                         delete bundle[key];
                     });
+                    console.timeEnd('makeCS')
             }
         },
     };

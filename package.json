@@ -29,7 +29,6 @@
     "@babel/register": "^7.4.4",
     "@swc/cli": "^0.1.35",
     "@swc/core": "^1.2.50",
-    "@types/jscodeshift": "^0.6.0",
     "@types/node": "^12.12.24",
     "@types/tmp": "^0.1.0",
     "globby": "^9.2.0",

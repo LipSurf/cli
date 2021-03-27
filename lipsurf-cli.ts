@@ -238,7 +238,13 @@ async function build(options, plugins) {
         pluginWLanguageFiles.map((f) => fs.readFile(f, { encoding: "utf8" }))
       );
       console.log("globbed pluginNames", pluginWLanguageFiles);
-      make(codeParts[0], resolveDir);
+      const lsPlugin = await make(
+        pluginName,
+        codeParts[0],
+        pluginWLanguageFiles.slice(1),
+        resolveDir
+      );
+      await fs.writeFile(`${pluginName}.4-0-0.20.ls`, lsPlugin);
       // make a temporary ts file that imports the other langs
       // (to avoid dupe names when just conjoining the plugins)
 
