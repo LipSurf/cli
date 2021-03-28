@@ -1,5 +1,12 @@
 /// <reference types="lipsurf-types/extension"/>
-import { PLANS, PLUGIN_SPLIT_SEQ, EXT_ID } from "lipsurf-common/cjs/constants";
+import {
+  PLANS,
+  PLUGIN_SPLIT_SEQ,
+  EXT_ID,
+  FREE_PLAN,
+  PLUS_PLAN,
+  PREMIUM_PLAN,
+} from "lipsurf-common/cjs/constants";
 import { build } from "esbuild";
 import {
   ExportDefaultExpression,
@@ -17,6 +24,7 @@ const importPluginBase = `import PluginBase from 'chrome-extension://${EXT_ID}/d
 const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://${EXT_ID}/dist/modules/extension-util.js';`;
 
 declare let showNeedsUpgradeError: any;
+type PluginSub = [free: string, plus: string, premium: string];
 
 function versionConvertDots(v) {
   return v.replace(/\./g, "-");
@@ -28,7 +36,7 @@ export async function make(
   langPlugins: string[],
   resolveDir: string = __dirname,
   baseImports = true
-) {
+): Promise<PluginSub> {
   // const [freePlugin, plusPlugin, premPlugin] = PLANS.map((plan) =>
   //   replaceCmdsAbovePlan(plugin, plan)
   // );
@@ -42,26 +50,45 @@ export async function make(
         )}";`
     )
     .join("");
+
+  console.time("before");
+  const byPlanAndMatching = {
+    [FREE_PLAN]: {},
+    [PLUS_PLAN]: {},
+    [PREMIUM_PLAN]: {},
+  };
+
+
+  let parsed = parseSync(source, { syntax: "ecmascript", dynamicImport: true });
+  const cloneStr = JSON.stringify(parsed);
+  let i = 0;
+  for (const plan of PLANS) {
+    for (const type of ["matching", "nonmatching"]) {
+      byPlanAndMatching[plan][type] = printSync(
+        new ConsoleStripper().visitProgram(parsed)
+      ).code;
+      // work with copies
+      if (i != 5) {
+        i++;
+        parsed = JSON.parse(cloneStr);
+      }
+    }
+  }
+  console.timeEnd("before");
+
   const transformedPluginsTuple = [
     source,
-    ...(
-      await Promise.all(
-        [true, false].map((isMatching) =>
-          transform(source, {
-            jsc: {
-              target: "es2020",
-            },
-            plugin: (m) => new ConsoleStripper(isMatching).visitProgram(m),
-          }).catch((e) => {
-            if (e instanceof BlankError) return { code: "" };
-            throw e;
-          })
-        )
-      )
-    ).map((p) => p.code),
+    ...PLANS.reduce(
+      (memo, p) =>
+        memo.concat([
+          byPlanAndMatching[p]["matching"],
+          byPlanAndMatching[p]["nonmatching"],
+        ]),
+      []
+    ),
   ];
-  console.log("after transform:\n", transformedPluginsTuple[1]);
-  console.log("after transform (nonmatching):\n", transformedPluginsTuple[2]);
+  // console.log("after transform:\n", transformedPluginsTuple[1]);
+  // console.log("after transform (nonmatching):\n", transformedPluginsTuple[2]);
 
   const splitPluginTuple = (
     await Promise.all(
@@ -98,26 +125,29 @@ export async function make(
     baseImportsStr = importPluginBase + importExtensionUtil;
   }
 
+  const finalPluginsTuple: Partial<PluginSub> = [];
   // combine the files into .ls file
-  return [
-    baseImportsStr,
-    splitPluginTuple
-      .map(
-        (s) =>
-          `allPlugins.${pluginId} = (() => { ${s.replace(
-            `export default require_${pluginId}()`,
-            `return require_${pluginId}().default`
-          )} })();`
-        // new TextDecoder()
-        //   .decode(f.outputFiles[0].contents)
-        //   // .replace(
-        //   //   `default: () => ${pluginId}_default`,
-        //   //   `default: ${pluginId}_default`
-        //   // )
-        //   .replace("var allPlugins = allPlugins || {};", "") +
-      )
-      .join(PLUGIN_SPLIT_SEQ),
-  ].join("");
+  for (let i = 0; i < PLANS.length; i++) {
+    const matchingNonMatching = splitPluginTuple.slice(i * 2, i * 2 + 2);
+    if (matchingNonMatching.reduce((memo, x) => memo + x.length, 0) === 0)
+      // no plugin for this level
+      finalPluginsTuple.push("");
+    else
+      finalPluginsTuple.push(
+        [
+          baseImportsStr + splitPluginTuple[0],
+          ...matchingNonMatching.map(
+            (s) =>
+              `allPlugins.${pluginId} = (() => { ${s.replace(
+                `export default require_${pluginId}()`,
+                `return require_${pluginId}().default`
+              )} })();`
+          ),
+        ].join(PLUGIN_SPLIT_SEQ)
+      );
+  }
+
+  return <PluginSub>finalPluginsTuple;
 }
 
 /**
@@ -210,7 +240,7 @@ class ConsoleStripper extends Visitor {
   //     console.log("key", node.key, "val", node.value);
   //   return node;
   // }
-  constructor(private isMatching: boolean) {
+  constructor() {
     super();
   }
 
@@ -261,6 +291,17 @@ class ConsoleStripper extends Visitor {
     );
   }
 
+  private getPluginProp(pluginProps: Property[], propName: string) {
+    return <KeyValueProperty>(
+      pluginProps.find(
+        (p) =>
+          p.type === "KeyValueProperty" &&
+          p.key.type === "Identifier" &&
+          p.key.value === propName
+      )
+    );
+  }
+
   visitExportDefaultExpression(n: ExportDefaultExpression): ModuleDeclaration {
     if (n.expression.type === "ObjectExpression") {
       const pluginObjectExp = <SpreadElement | undefined>(
@@ -271,8 +312,9 @@ class ConsoleStripper extends Visitor {
         )
       );
       if (pluginObjectExp) {
-        const pluginProps = (<ObjectExpression>pluginObjectExp.arguments)
-          .properties;
+        const pluginProps = <Property[]>(
+          (<ObjectExpression>pluginObjectExp.arguments).properties
+        );
         // console.log(pluginProps);
         (<ObjectExpression>(
           pluginObjectExp.arguments
@@ -287,18 +329,12 @@ class ConsoleStripper extends Visitor {
                 PLUGIN_PROPS_TO_REMOVE_FROM_CS.includes(prop.key.value))
             )
         );
-        const commandsProp = <KeyValueProperty | undefined>(
-          pluginProps.find(
-            (p) =>
-              p.type === "KeyValueProperty" &&
-              p.key.type === "Identifier" &&
-              p.key.value === "commands"
-          )
-        );
+        const commandsProp = this.getPluginProp(pluginProps, "commands");
         if (commandsProp) {
           const commandsArr = <ArrayExpression>commandsProp.value;
           // only global commands
-          if (!this.isMatching) {
+          // if (!this.isMatching) {
+          if (true) {
             // @ts-ignore
             commandsArr.elements = commandsArr.elements.filter((e: any) =>
               e.expression.properties.find(
@@ -328,8 +364,11 @@ class ConsoleStripper extends Visitor {
             );
           });
           const newCmds = this.commandArrayToObject(commandsArr);
-          debugger;
-          if (newCmds.properties.length === 0) {
+          if (
+            newCmds.properties.length === 0 &&
+            !this.getPluginProp(pluginProps, "init") &&
+            !this.getPluginProp(pluginProps, "destroy")
+          ) {
             throw new BlankError();
           } else {
             commandsProp.value = newCmds;

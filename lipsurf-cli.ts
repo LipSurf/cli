@@ -1,6 +1,8 @@
 import * as program from "commander";
 import globby from "globby";
+import { PLANS } from "lipsurf-common/cjs/constants";
 import { sys } from "typescript";
+import { join } from "path";
 import { promises as fs } from "fs";
 import { execSync } from "child_process";
 // import ParsedPlugin from "./lib/ParsedPlugin";
@@ -198,7 +200,6 @@ async function build(options, plugins) {
   // import PluginBase and/or ExtensionUtil
   // if this is off, assume they already exist in global scope
   // where chrome-extension://.../plugin-base.js module obviously doesn't exist)
-  const baseImports = options.baseImports;
   const timeStart = new Date();
   // const globbedTs = globby.sync(["src/*/*.ts", "!src/*/*.*.ts", "!src/@types"]);
   const globbedTs = globby.sync("dist/tmp/*/*.js");
@@ -214,14 +215,14 @@ async function build(options, plugins) {
     );
   }
   // options.outDir, pluginNames, process.cwd() + "/", options.prod, baseImports;
-  console.log("globbedTs", globbedTs);
+  // console.log("globbedTs", globbedTs);
 
   if (watch) {
   } else {
     // console.log("pluginNames", pluginNames);
     for (const pluginName of pluginNames) {
       const pluginWLanguageFiles = globbedTs
-        .filter((x) => x.substr(x.lastIndexOf("/")).includes(pluginName))
+        .filter((x) => x.substr(x.lastIndexOf("/")).includes(`/${pluginName}.`))
         .sort((a, b) => a.length - b.length);
       const resolveDir = pluginWLanguageFiles[0].substr(
         0,
@@ -238,13 +239,21 @@ async function build(options, plugins) {
         pluginWLanguageFiles.map((f) => fs.readFile(f, { encoding: "utf8" }))
       );
       console.log("globbed pluginNames", pluginWLanguageFiles);
-      const lsPlugin = await make(
-        pluginName,
-        codeParts[0],
-        pluginWLanguageFiles.slice(1),
-        resolveDir
-      );
-      await fs.writeFile(`${pluginName}.4-0-0.20.ls`, lsPlugin);
+      (
+        await make(
+          pluginName,
+          codeParts[0],
+          pluginWLanguageFiles.slice(1),
+          resolveDir,
+          options.baseImports
+        )
+      ).forEach((c, i) => {
+        if (c)
+          fs.writeFile(
+            `${join(options.outDir, pluginName)}.4-0-0.${PLANS[i]}.ls`,
+            c
+          );
+      });
       // make a temporary ts file that imports the other langs
       // (to avoid dupe names when just conjoining the plugins)
 
