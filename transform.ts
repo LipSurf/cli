@@ -10,21 +10,14 @@ import {
 import { build } from "esbuild";
 import {
   ExportDefaultExpression,
-  ExportDefaultSpecifier,
-  ExportSpecifier,
   KeyValueProperty,
-  Module,
   ModuleDeclaration,
-  transform,
-  parse,
   parseSync,
   printSync,
-  Identifier,
 } from "@swc/core";
 const importPluginBase = `import PluginBase from 'chrome-extension://${EXT_ID}/dist/modules/plugin-base.js';`;
 const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://${EXT_ID}/dist/modules/extension-util.js';`;
 
-declare let showNeedsUpgradeError: any;
 type PluginSub = [free: string, plus: string, premium: string];
 enum PluginPartType {
   "matching",
@@ -66,15 +59,17 @@ export async function make(
   const cloneStr = JSON.stringify(parsed);
   let i = 0;
   for (const plan of PLANS) {
-    for (const type of Object.values(PluginPartType)) {
+    for (const type of Object.values(PluginPartType).filter((x) =>
+      isNaN(Number(x))
+    )) {
       let code: string;
       try {
         code = printSync(
           new ConsoleStripper(plan, PluginPartType[type]).visitProgram(parsed)
         ).code;
       } catch (e) {
-        if (e instanceof BlankError) code = "";
-        else throw e;
+        if (e instanceof BlankPartError) code = "";
+        else throw new Error(`Error transforming ${pluginId}.${plan} ${e}`);
       }
       byPlanAndMatching[plan][type] = code;
       // work with copies
@@ -138,7 +133,10 @@ export async function make(
   const finalPluginsTuple: Partial<PluginSub> = [];
   // combine the files into .ls file
   for (let i = 0; i < PLANS.length; i++) {
-    const matchingNonMatching = splitPluginTuple.slice(i * 2, i * 2 + 2);
+    const matchingNonMatching = splitPluginTuple.slice(
+      i * 2 + 1,
+      (1 + i) * 2 + 3
+    );
     if (matchingNonMatching.reduce((memo, x) => memo + x.length, 0) === 0)
       // no plugin for this level
       finalPluginsTuple.push("");
@@ -161,8 +159,6 @@ export async function make(
 }
 
 import {
-  CallExpression,
-  Expression,
   Property,
   SpreadElement,
   ObjectExpression,
@@ -170,7 +166,6 @@ import {
   NumericLiteral,
 } from "@swc/core";
 import Visitor from "@swc/core/Visitor";
-import { pbkdf2 } from "crypto";
 import { ExpressionStatement } from "typescript";
 
 const PLUGIN_PROPS_TO_REMOVE_FROM_CS = [
@@ -208,7 +203,7 @@ interface WrappedExpression<T> {
   expression: T;
 }
 
-class BlankError extends Error {}
+class BlankPartError extends Error {}
 
 class ConsoleStripper extends Visitor {
   pluginProps: Property[] = [];
@@ -308,10 +303,6 @@ class ConsoleStripper extends Visitor {
             // @ts-ignore
             const key = p.key;
             if (key.value === "pageFn") {
-              const parsed = parseSync(
-                `() => showNeedsUpgradeError({ plan: ${minNeededPlan} })`
-              );
-
               // @ts-ignore
               p.value = (<ExpressionStatement>(
                 parseSync(
@@ -326,6 +317,7 @@ class ConsoleStripper extends Visitor {
         return cmdObj;
       }
     );
+    if (!cmdsOnThisPlan) throw new BlankPartError();
     return commands;
   }
 
@@ -341,15 +333,7 @@ class ConsoleStripper extends Visitor {
   }
 
   visitExportDefaultExpression(n: ExportDefaultExpression): ModuleDeclaration {
-    // the languages also count as default exports
-    // so only process the export that spreads PluginBase (hacky)
-    if (
-      n.expression.type === "ObjectExpression" &&
-      n.expression.properties.length &&
-      n.expression.properties[0].type === "SpreadElement" &&
-      n.expression.properties[0].arguments.type === "Identifier" &&
-      n.expression.properties[0].arguments.value === "PluginBase"
-    ) {
+    if (n.expression.type === "ObjectExpression") {
       const pluginObjectExp = <SpreadElement | undefined>(
         n.expression.properties.find(
           (p) =>
@@ -416,7 +400,7 @@ class ConsoleStripper extends Visitor {
             !this.getPluginProp("init") &&
             !this.getPluginProp("destroy")
           ) {
-            throw new BlankError();
+            throw new BlankPartError();
           } else {
             commandsProp.value = newCmds;
           }
