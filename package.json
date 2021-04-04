@@ -2,7 +2,7 @@
   "name": "lipsurf-cli",
   "version": "0.0.1",
   "bin": {
-    "lipsurf-cli": "./lipsurf-cli"
+    "lipsurf-cli": "./lib/lipsurf-cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"

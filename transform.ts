@@ -19,12 +19,17 @@ import {
   parse,
   parseSync,
   printSync,
+  Identifier,
 } from "@swc/core";
 const importPluginBase = `import PluginBase from 'chrome-extension://${EXT_ID}/dist/modules/plugin-base.js';`;
 const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://${EXT_ID}/dist/modules/extension-util.js';`;
 
 declare let showNeedsUpgradeError: any;
 type PluginSub = [free: string, plus: string, premium: string];
+enum PluginPartType {
+  "matching",
+  "nonmatching",
+}
 
 function versionConvertDots(v) {
   return v.replace(/\./g, "-");
@@ -40,7 +45,6 @@ export async function make(
   // const [freePlugin, plusPlugin, premPlugin] = PLANS.map((plan) =>
   //   replaceCmdsAbovePlan(plugin, plan)
   // );
-  console.log("langPlugins", langPlugins);
   source += langPlugins
     .map(
       (langPlugin) =>
@@ -58,15 +62,21 @@ export async function make(
     [PREMIUM_PLAN]: {},
   };
 
-
   let parsed = parseSync(source, { syntax: "ecmascript", dynamicImport: true });
   const cloneStr = JSON.stringify(parsed);
   let i = 0;
   for (const plan of PLANS) {
-    for (const type of ["matching", "nonmatching"]) {
-      byPlanAndMatching[plan][type] = printSync(
-        new ConsoleStripper().visitProgram(parsed)
-      ).code;
+    for (const type of Object.values(PluginPartType)) {
+      let code: string;
+      try {
+        code = printSync(
+          new ConsoleStripper(plan, PluginPartType[type]).visitProgram(parsed)
+        ).code;
+      } catch (e) {
+        if (e instanceof BlankError) code = "";
+        else throw e;
+      }
+      byPlanAndMatching[plan][type] = code;
       // work with copies
       if (i != 5) {
         i++;
@@ -150,40 +160,6 @@ export async function make(
   return <PluginSub>finalPluginsTuple;
 }
 
-/**
- * Add pageFn to commands that only have fn.
- * @param j
- * @param plugin
- * @param pluginPlan
- * @returns if we should output for this plan (if there are specific commands in this level)
- */
-export function replaceCmdsAbovePlan(
-  plugin: IPlugin,
-  buildForPlan: number
-): boolean {
-  let cmdsOnThisPlan: boolean = false;
-  const pluginPlan = plugin.plan || 0;
-  plugin.commands.map((cmdObj) => {
-    const cmdPlan = cmdObj.plan || 0;
-    const minNeededPlan = cmdPlan ? cmdPlan : pluginPlan;
-    let replace = false;
-    if (!cmdPlan) {
-      if (pluginPlan === buildForPlan) cmdsOnThisPlan = true;
-      else if (pluginPlan > buildForPlan) replace = true;
-    } else {
-      if (buildForPlan === cmdPlan) cmdsOnThisPlan = true;
-      if (minNeededPlan > buildForPlan) replace = true;
-    }
-    if (replace) {
-      cmdObj.pageFn = () => showNeedsUpgradeError({ plan: minNeededPlan });
-    }
-    return cmdObj;
-  });
-  // if nothing is replaced, and the highestLevel is lower than build for plan, then return false so we
-  // don't build for this level (the highest level might have been 10 or 0, and already built)
-  return cmdsOnThisPlan || buildForPlan === 0;
-}
-
 import {
   CallExpression,
   Expression,
@@ -191,9 +167,11 @@ import {
   SpreadElement,
   ObjectExpression,
   ArrayExpression,
+  NumericLiteral,
 } from "@swc/core";
 import Visitor from "@swc/core/Visitor";
 import { pbkdf2 } from "crypto";
+import { ExpressionStatement } from "typescript";
 
 const PLUGIN_PROPS_TO_REMOVE_FROM_CS = [
   "description",
@@ -233,14 +211,9 @@ interface WrappedExpression<T> {
 class BlankError extends Error {}
 
 class ConsoleStripper extends Visitor {
-  // no good be
-  // visitProperty(node: Property): Property {
-  //   console.log(node.type);
-  //   if (node.type === "KeyValueProperty")
-  //     console.log("key", node.key, "val", node.value);
-  //   return node;
-  // }
-  constructor() {
+  pluginProps: Property[] = [];
+
+  constructor(private buildForPlan: plan, private type: PluginPartType) {
     super();
   }
 
@@ -291,9 +264,74 @@ class ConsoleStripper extends Visitor {
     );
   }
 
-  private getPluginProp(pluginProps: Property[], propName: string) {
+  /**
+   * Add pageFn to commands that only have fn.
+   * @param j
+   * @param plugin
+   * @param pluginPlan
+   * @returns if we should output for this plan (if there are specific commands in this level)
+   */
+  replaceCmdsAbovePlan(commands: ObjectExpression): ObjectExpression {
+    let cmdsOnThisPlan: boolean = false;
+    const pluginPlan =
+      (<NumericLiteral>this.getPluginProp("plan")?.value)?.value || 0;
+    // if nothing is replaced, and the highestLevel is lower than build for plan, then return false so we
+    // don't build for this level (the highest level might have been 10 or 0, and already built)
+    // @ts-ignore
+    commands.properties = (<KeyValueProperty[]>commands.properties).map(
+      (cmdObj) => {
+        const cmdVal = <ObjectExpression>cmdObj.value;
+        const cmdPlan =
+          // @ts-ignore
+          (<NumericLiteral>(
+            cmdVal.properties.find(
+              (p) =>
+                p.type === "KeyValueProperty" &&
+                p.key.type === "Identifier" &&
+                p.key.value === "plan"
+            )
+          ))?.value || 0;
+        const minNeededPlan = cmdPlan ? cmdPlan : pluginPlan;
+        let replace = false;
+        if (!cmdPlan) {
+          // @ts-ignore
+          if (pluginPlan === this.buildForPlan) cmdsOnThisPlan = true;
+          // @ts-ignore
+          else if (pluginPlan > this.buildForPlan) replace = true;
+        } else {
+          if (this.buildForPlan === cmdPlan) cmdsOnThisPlan = true;
+          if (minNeededPlan > this.buildForPlan) replace = true;
+        }
+        if (replace) {
+          // @ts-ignore
+          cmdVal.properties = cmdVal.properties.reduce((memo, p) => {
+            // @ts-ignore
+            const key = p.key;
+            if (key.value === "pageFn") {
+              const parsed = parseSync(
+                `() => showNeedsUpgradeError({ plan: ${minNeededPlan} })`
+              );
+
+              // @ts-ignore
+              p.value = (<ExpressionStatement>(
+                parseSync(
+                  `() => showNeedsUpgradeError({ plan: ${minNeededPlan} })`
+                ).body[0]
+              )).expression;
+            } else if (key.value === "plan") return memo;
+            memo.push(p);
+            return memo;
+          }, <(SpreadElement | Property)[]>[]);
+        }
+        return cmdObj;
+      }
+    );
+    return commands;
+  }
+
+  private getPluginProp(propName: string) {
     return <KeyValueProperty>(
-      pluginProps.find(
+      this.pluginProps.find(
         (p) =>
           p.type === "KeyValueProperty" &&
           p.key.type === "Identifier" &&
@@ -303,7 +341,15 @@ class ConsoleStripper extends Visitor {
   }
 
   visitExportDefaultExpression(n: ExportDefaultExpression): ModuleDeclaration {
-    if (n.expression.type === "ObjectExpression") {
+    // the languages also count as default exports
+    // so only process the export that spreads PluginBase (hacky)
+    if (
+      n.expression.type === "ObjectExpression" &&
+      n.expression.properties.length &&
+      n.expression.properties[0].type === "SpreadElement" &&
+      n.expression.properties[0].arguments.type === "Identifier" &&
+      n.expression.properties[0].arguments.value === "PluginBase"
+    ) {
       const pluginObjectExp = <SpreadElement | undefined>(
         n.expression.properties.find(
           (p) =>
@@ -312,13 +358,13 @@ class ConsoleStripper extends Visitor {
         )
       );
       if (pluginObjectExp) {
-        const pluginProps = <Property[]>(
+        this.pluginProps = <Property[]>(
           (<ObjectExpression>pluginObjectExp.arguments).properties
         );
         // console.log(pluginProps);
         (<ObjectExpression>(
           pluginObjectExp.arguments
-        )).properties = pluginProps.filter(
+        )).properties = this.pluginProps.filter(
           (prop) =>
             !(
               (prop.type === "Identifier" &&
@@ -329,12 +375,11 @@ class ConsoleStripper extends Visitor {
                 PLUGIN_PROPS_TO_REMOVE_FROM_CS.includes(prop.key.value))
             )
         );
-        const commandsProp = this.getPluginProp(pluginProps, "commands");
+        const commandsProp = this.getPluginProp("commands");
         if (commandsProp) {
           const commandsArr = <ArrayExpression>commandsProp.value;
           // only global commands
-          // if (!this.isMatching) {
-          if (true) {
+          if (this.type === PluginPartType.nonmatching) {
             // @ts-ignore
             commandsArr.elements = commandsArr.elements.filter((e: any) =>
               e.expression.properties.find(
@@ -363,11 +408,13 @@ class ConsoleStripper extends Visitor {
               }
             );
           });
-          const newCmds = this.commandArrayToObject(commandsArr);
+          const newCmds = this.replaceCmdsAbovePlan(
+            this.commandArrayToObject(commandsArr)
+          );
           if (
             newCmds.properties.length === 0 &&
-            !this.getPluginProp(pluginProps, "init") &&
-            !this.getPluginProp(pluginProps, "destroy")
+            !this.getPluginProp("init") &&
+            !this.getPluginProp("destroy")
           ) {
             throw new BlankError();
           } else {

@@ -1,10 +1,11 @@
+#!/usr/bin/env node
 import * as program from "commander";
 import globby from "globby";
 import { PLANS } from "lipsurf-common/cjs/constants";
-import { sys } from "typescript";
 import { join } from "path";
 import { promises as fs } from "fs";
 import { execSync } from "child_process";
+import { compile } from "./ts-compile";
 // import ParsedPlugin from "./lib/ParsedPlugin";
 import { make } from "./transform";
 // (useful for turning off when importing plugins in LipSurf.js
@@ -31,119 +32,6 @@ program
     "specify a version instead of incrementing the minor version by 1"
   )
   .action((cmdObj) => upVersion({ ...cmdObj, ...cmdObj.parent }));
-
-const parseConfigHost /* : any */ = {
-  fileExists: sys.fileExists,
-  readDirectory: sys.readDirectory,
-  readFile: sys.readFile,
-  useCaseSensitiveFileNames: true,
-};
-// const configFileName = findConfigFile("./", sys.fileExists, "tsconfig.json");
-
-// function compile(config) {
-//   let program = createProgram(config.fileNames, config.options);
-//   let emitResult = program.emit();
-
-//   let allDiagnostics =
-//     .getPreEmitDiagnostics(program)
-//     .concat(emitResult.diagnostics);
-
-//   allDiagnostics.forEach((diagnostic) => {
-//     if (diagnostic.file) {
-//       let { line, character } = diagnostic.file.getLineAndCharacterOfPosition(
-//         diagnostic.start!
-//       );
-//       let message = ts.flattenDiagnosticMessageText(
-//         diagnostic.messageText,
-//         "\n"
-//       );
-//       console.log(
-//         `${diagnostic.file.fileName} (${line + 1},${character + 1}): ${message}`
-//       );
-//     } else {
-//       console.log(
-//         `${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`
-//       );
-//     }
-//   });
-
-//   if (emitResult.emitSkipped) throw "TypeScript compile errors.";
-// }
-
-// const formatHost = {
-//   getCanonicalFileName: (path) => path,
-//   getCurrentDirectory: ts.sys.getCurrentDirectory,
-//   getNewLine: () => ts.sys.newLine,
-// };
-
-// function watchTs() {
-//   // TypeScript can use several different program creation "strategies":
-//   //  * ts.createEmitAndSemanticDiagnosticsBuilderProgram,
-//   //  * ts.createSemanticDiagnosticsBuilderProgram
-//   //  * ts.createAbstractBuilder
-//   // The first two produce "builder programs". These use an incremental strategy
-//   // to only re-check and emit files whose contents may have changed, or whose
-//   // dependencies may have changes which may impact change the result of prior
-//   // type-check and emit.
-//   // The last uses an ordinary program which does a full type check after every
-//   // change.
-//   // Between `createEmitAndSemanticDiagnosticsBuilderProgram` and
-//   // `createSemanticDiagnosticsBuilderProgram`, the only difference is emit.
-//   // For pure type-checking scenarios, or when another tool/process handles emit,
-//   // using `createSemanticDiagnosticsBuilderProgram` may be more desirable.
-//   const createProgram = ts.createEmitAndSemanticDiagnosticsBuilderProgram;
-
-//   // Note that there is another overload for `createWatchCompilerHost` that takes
-//   // a set of root files.
-//   const host = ts.createWatchCompilerHost(
-//     configFileName,
-//     {},
-//     ts.sys,
-//     createProgram,
-//     reportDiagnostic,
-//     reportWatchStatusChanged
-//   );
-
-//   // You can technically override any given hook on the host, though you probably
-//   // don't need to.
-//   // Note that we're assuming `origCreateProgram` and `origPostProgramCreate`
-//   // doesn't use `this` at all.
-//   const origCreateProgram = host.createProgram;
-//   host.createProgram = (rootNames, options, host, oldProgram) => {
-//     console.log("Compiling changed typescript...");
-//     return origCreateProgram(rootNames, options, host, oldProgram);
-//   };
-//   const origPostProgramCreate = host.afterProgramCreate;
-
-//   host.afterProgramCreate = (program) => {
-//     console.log("Done compiling changed typescript.");
-//     origPostProgramCreate(program);
-//   };
-
-//   // `createWatchProgram` creates an initial program, watches files, and updates
-//   // the program over time.
-//   ts.createWatchProgram(host);
-// }
-
-// function reportDiagnostic(diagnostic) {
-//   console.error(
-//     "Error",
-//     diagnostic.code,
-//     ":",
-//     ts.flattenDiagnosticMessageText(
-//       diagnostic.messageText,
-//       formatHost.getNewLine()
-//     )
-//   );
-// }
-
-/**
- * Prints a diagnostic every time the watch status changes.
- * This is mainly for messages like "Starting compilation" or "Compilation completed".
- */
-// function reportWatchStatusChanged(diagnostic) {
-//   console.info(ts.formatDiagnostic(diagnostic, formatHost));
-// }
 
 // class Linker {
 //   resolver;
@@ -191,19 +79,23 @@ const parseConfigHost /* : any */ = {
 //   }
 // }
 
-async function build(options, plugins) {
+function resolvePlugin() {
   const resolve = require("resolve");
+  // const linker = new Linker(
+  //   resolve,
+  //   pluginWLanguageFiles[0].substr(
+  //     0,
+  //     pluginWLanguageFiles[0].lastIndexOf("/")
+  //   )
+  // );
+}
 
+async function build(options, plugins) {
   if (typeof plugins === "undefined") plugins = [];
   let pluginNames = <string[]>[].concat(plugins);
   const watch = options.watch;
-  // import PluginBase and/or ExtensionUtil
-  // if this is off, assume they already exist in global scope
-  // where chrome-extension://.../plugin-base.js module obviously doesn't exist)
   const timeStart = new Date();
-  // const globbedTs = globby.sync(["src/*/*.ts", "!src/*/*.*.ts", "!src/@types"]);
-  const globbedTs = globby.sync("dist/tmp/*/*.js");
-  // const globbedTs = globby.sync(["src/*/*.ts", "!src/@types"]);
+  const globbedTs = globby.sync(["src/*/*.ts", "!src/@types"]);
   if (!pluginNames.length) {
     pluginNames = Array.from(
       new Set(
@@ -214,31 +106,23 @@ async function build(options, plugins) {
       )
     );
   }
-  // options.outDir, pluginNames, process.cwd() + "/", options.prod, baseImports;
-  // console.log("globbedTs", globbedTs);
+  console.log("Building plugins:", pluginNames);
 
   if (watch) {
   } else {
-    // console.log("pluginNames", pluginNames);
+    await compile(globbedTs);
     for (const pluginName of pluginNames) {
       const pluginWLanguageFiles = globbedTs
+        .map((f) => f.replace(/^src\//, "dist/tmp/").replace(/.ts$/, ".js"))
         .filter((x) => x.substr(x.lastIndexOf("/")).includes(`/${pluginName}.`))
         .sort((a, b) => a.length - b.length);
       const resolveDir = pluginWLanguageFiles[0].substr(
         0,
         pluginWLanguageFiles[0].lastIndexOf("/")
       );
-      // const linker = new Linker(
-      //   resolve,
-      //   pluginWLanguageFiles[0].substr(
-      //     0,
-      //     pluginWLanguageFiles[0].lastIndexOf("/")
-      //   )
-      // );
       const codeParts = await Promise.all(
         pluginWLanguageFiles.map((f) => fs.readFile(f, { encoding: "utf8" }))
       );
-      console.log("globbed pluginNames", pluginWLanguageFiles);
       (
         await make(
           pluginName,
