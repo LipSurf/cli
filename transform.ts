@@ -135,7 +135,7 @@ export async function make(
   for (let i = 0; i < PLANS.length; i++) {
     const matchingNonMatching = splitPluginTuple.slice(
       i * 2 + 1,
-      (1 + i) * 2 + 3
+      (1 + i) * 2 + 1
     );
     if (matchingNonMatching.reduce((memo, x) => memo + x.length, 0) === 0)
       // no plugin for this level
@@ -260,11 +260,10 @@ class ConsoleStripper extends Visitor {
   }
 
   /**
-   * Add pageFn to commands that only have fn.
-   * @param j
-   * @param plugin
-   * @param pluginPlan
-   * @returns if we should output for this plan (if there are specific commands in this level)
+   * throws BlankPartError if there's no commands on this plan and we're building
+   * for a non-free plan.
+   * @param commands
+   * @returns
    */
   replaceCmdsAbovePlan(commands: ObjectExpression): ObjectExpression {
     let cmdsOnThisPlan: boolean = false;
@@ -317,7 +316,7 @@ class ConsoleStripper extends Visitor {
         return cmdObj;
       }
     );
-    if (!cmdsOnThisPlan) throw new BlankPartError();
+    if (!cmdsOnThisPlan && this.buildForPlan !== 0) throw new BlankPartError();
     return commands;
   }
 
