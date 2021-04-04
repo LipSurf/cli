@@ -137,7 +137,10 @@ export async function make(
       i * 2 + 1,
       (1 + i) * 2 + 1
     );
-    if (matchingNonMatching.reduce((memo, x) => memo + x.length, 0) === 0)
+    if (
+      PLANS[i] !== FREE_PLAN &&
+      matchingNonMatching.reduce((memo, x) => memo + x.length, 0) === 0
+    )
       // no plugin for this level
       finalPluginsTuple.push("");
     else
@@ -284,7 +287,8 @@ class ConsoleStripper extends Visitor {
                 p.key.type === "Identifier" &&
                 p.key.value === "plan"
             )
-          ))?.value || 0;
+            // @ts-ignore
+          ))?.value?.value || 0;
         const minNeededPlan = cmdPlan ? cmdPlan : pluginPlan;
         let replace = false;
         if (!cmdPlan) {
