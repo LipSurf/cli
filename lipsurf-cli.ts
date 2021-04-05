@@ -1,15 +1,15 @@
-#!/usr/bin/env node
-import * as program from "commander";
+#!/bin/sh
+":"; //# comment; exec /usr/bin/env node --experimental-vm-modules "$0" "$@"
+"use strict";
+// #!/usr/bin/env node
+import program from "commander";
 import globby from "globby";
 import { PLANS } from "lipsurf-common/cjs/constants";
 import { join } from "path";
 import { promises as fs } from "fs";
 import { execSync } from "child_process";
 import { compile } from "./ts-compile";
-// import ParsedPlugin from "./lib/ParsedPlugin";
-import { make } from "./transform";
-// (useful for turning off when importing plugins in LipSurf.js
-import vm from "vm";
+import { makePlugin } from "./transform";
 
 const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
 
@@ -33,71 +33,14 @@ program
   )
   .action((cmdObj) => upVersion({ ...cmdObj, ...cmdObj.parent }));
 
-// class Linker {
-//   resolver;
-
-//   constructor(resolver, basedir) {
-//     this.resolver = resolver;
-//     this.basedir = basedir;
-//   }
-//   async link(specifier, referencingModule) {
-//     try {
-//       console.log(
-//         "baseDir",
-//         this.basedir,
-//         "specifier",
-//         specifier,
-//         "referencing module",
-//         referencingModule
-//       );
-//       // let filePath;
-//       // if (specifier.startsWith(".")) {
-//       //   filePath = `${specifier}.js`;
-//       // } else {
-//       //   filePath = `./node_modules/${specifier}`;
-//       // }
-//       const filePath = await new Promise((cb) =>
-//         this.resolver(
-//           specifier,
-//           {
-//             basedir: this.basedir,
-//           },
-//           (err, res) => cb(res)
-//         )
-//       );
-//       console.log("filepath", filePath);
-//       const file = await fs.readFile(filePath, "utf8");
-//       console.log("context", referencingModule.context);
-//       return new vm.SourceTextModule(file, {
-//         context: referencingModule.context,
-//       });
-//     } catch (e) {
-//       throw new Error(`Error linking ${specifier}`, e);
-//     }
-//     // Using `contextifiedObject` instead of `referencingModule.context`
-//     // here would work as well.
-//   }
-// }
-
-function resolvePlugin() {
-  const resolve = require("resolve");
-  // const linker = new Linker(
-  //   resolve,
-  //   pluginWLanguageFiles[0].substr(
-  //     0,
-  //     pluginWLanguageFiles[0].lastIndexOf("/")
-  //   )
-  // );
-}
-
 async function build(options, plugins) {
   if (typeof plugins === "undefined") plugins = [];
-  let pluginNames = <string[]>[].concat(plugins);
+  let pluginIds = <string[]>[].concat(plugins);
   const watch = options.watch;
   const timeStart = new Date();
   const globbedTs = globby.sync(["src/*/*.ts", "!src/@types"]);
-  if (!pluginNames.length) {
-    pluginNames = Array.from(
+  if (!pluginIds.length) {
+    pluginIds = Array.from(
       new Set(
         globbedTs
           .map((filePath) => FOLDER_REGX.exec(filePath))
@@ -106,38 +49,40 @@ async function build(options, plugins) {
       )
     );
   }
-  console.log("Building plugins:", pluginNames);
+  console.log("Building plugins:", pluginIds);
 
   if (watch) {
   } else {
-    await compile(globbedTs);
-    for (const pluginName of pluginNames) {
+    // await compile(globbedTs);
+    for (const pluginId of pluginIds) {
       const pluginWLanguageFiles = globbedTs
         .map((f) => f.replace(/^src\//, "dist/tmp/").replace(/.ts$/, ".js"))
-        .filter((x) => x.substr(x.lastIndexOf("/")).includes(`/${pluginName}.`))
+        .filter((x) => x.substr(x.lastIndexOf("/")).includes(`/${pluginId}.`))
         .sort((a, b) => a.length - b.length);
       const resolveDir = pluginWLanguageFiles[0].substr(
         0,
         pluginWLanguageFiles[0].lastIndexOf("/")
       );
-      const codeParts = await Promise.all(
-        pluginWLanguageFiles.map((f) => fs.readFile(f, { encoding: "utf8" }))
+      // const codeParts = await Promise.all(
+      //   pluginWLanguageFiles.map((f) => fs.readFile(f, { encoding: "utf8" }))
+      // );
+      // await make(
+      //   pluginName,
+      //   codeParts[0],
+      //   pluginWLanguageFiles.slice(1),
+      //   process.env.PRODUCTION === "true",
+      //   resolveDir,
+      //   options.baseImports
+      // )
+      (await makePlugin(pluginId, pluginWLanguageFiles, resolveDir)).forEach(
+        (c, i) => {
+          if (c)
+            fs.writeFile(
+              `${join(options.outDir, pluginId)}.4-0-0.${PLANS[i]}.ls`,
+              c
+            );
+        }
       );
-      (
-        await make(
-          pluginName,
-          codeParts[0],
-          pluginWLanguageFiles.slice(1),
-          resolveDir,
-          options.baseImports
-        )
-      ).forEach((c, i) => {
-        if (c)
-          fs.writeFile(
-            `${join(options.outDir, pluginName)}.4-0-0.${PLANS[i]}.ls`,
-            c
-          );
-      });
       // make a temporary ts file that imports the other langs
       // (to avoid dupe names when just conjoining the plugins)
 
@@ -155,42 +100,6 @@ async function build(options, plugins) {
       //   // `export default plugin;`,
       //   await fs.readFile(pluginWLanguageFiles[0], "utf8"),
       // ];
-
-      // const context = {
-      //   // this: {},
-      //   global: {},
-      //   exports: {},
-      //   module: {
-      //     exports: {},
-      //   },
-      //   PluginBase: {
-      //     languages: {},
-      //   },
-      // };
-      // vm.createContext(context);
-      // const finalScript = codeParts.join("\n");
-      // console.log("codeParts", finalScript);
-      // const mod = new vm.SourceTextModule(finalScript, { context });
-      // try {
-      //   await mod.link(linker.link.bind(linker));
-      // } catch (e) {
-      //   console.error(`linking error`, e);
-      // }
-      // await mod.evaluate();
-      // debugger;
-      // console.log("mod", mod, "context", context, "namespace", mod.namespace);
-
-      // console.log("TRANSFOOOORMEDDD");
-      // transform.make(mod.namespace.default);
-      // console.log(mod.namespace.default.commands[0].pageFn.toString());
-
-      // console.log("-----------------");
-      // console.log(mod.namespace.default.toString());
-
-      // console.log(context);
-      // console.log("mod", mod, "context", context, "namespace", mod.namespace);
-
-      // console.log("freePlugin", freePlugin);
     }
     const timeEnd = new Date();
     console.log(
