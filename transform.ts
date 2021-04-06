@@ -16,10 +16,9 @@
  *      only take what they need.
  */
 /// <reference types="lipsurf-types/extension"/>
-import { mock } from "sinon";
 import { build } from "esbuild";
-import vm from "vm";
 import { PluginPartType } from "./util";
+import { evalPlugin } from "./evaluator";
 import {
   PLANS,
   PLUGIN_SPLIT_SEQ,
@@ -134,7 +133,7 @@ export async function makePlugin(
   resolveDir: string,
   prod = false,
   baseImports = true
-): Promise<PluginSub> {
+): Promise<[pluginForSub: PluginSub, version: string]> {
   const importPluginDepsCode = [
     ...pluginWLanguageFiles.map((x, i) => {
       const name = x.substring(x.lastIndexOf("/") + 1, x.length - 3);
@@ -146,7 +145,6 @@ export async function makePlugin(
   ].join("\n");
 
   // bundle the deps
-  console.time("bundle");
   const resolvedPluginCode = (
     await build({
       stdin: {
@@ -160,14 +158,12 @@ export async function makePlugin(
       bundle: true,
     })
   ).outputFiles[0].text;
-  console.timeEnd("bundle");
 
   const byPlanAndMatching = {
     [FREE_PLAN]: {},
     [PLUS_PLAN]: {},
     [PREMIUM_PLAN]: {},
   };
-  console.time("find");
   const searchQ = `var ${pluginId}_default = {`;
   const pluginSrcReplacementStartI =
     resolvedPluginCode.search(new RegExp(searchQ)) + searchQ.length;
@@ -175,7 +171,6 @@ export async function makePlugin(
     resolvedPluginCode,
     pluginSrcReplacementStartI
   );
-  console.timeEnd("find");
 
   // console.log("start", pluginSrcReplacementStartI, pluginSrcReplacementEndI);
   // console.log(
@@ -190,15 +185,13 @@ export async function makePlugin(
   );
 
   let i = 0;
-  console.time("eval");
   let parsedPluginObj: IPlugin;
   try {
-    parsedPluginObj = await evalPlugin(resolvedPluginCode, resolveDir);
+    parsedPluginObj = await evalPlugin(resolvedPluginCode);
   } catch (e) {
     throw new Error(`Error evaluating ${pluginId}: ${e}`);
   }
-  console.timeEnd("eval");
-  console.time("makeParts");
+  const version = parsedPluginObj.version || "1.0.0";
   const cloneStr = JSON.stringify(parsedPluginObj);
   for (const plan of PLANS) {
     let type: PluginPartType;
@@ -225,7 +218,6 @@ export async function makePlugin(
       }
     }
   }
-  console.timeEnd("makeParts");
 
   const transformedPluginsTuple = [
     resolvedPluginCode,
@@ -242,7 +234,6 @@ export async function makePlugin(
   // console.log("after transform (nonmatching):\n", transformedPluginsTuple[2]);
 
   // Only for minifying and treeshaking
-  console.time("minify and treeshake");
   const splitPluginTuple = (
     await Promise.all(
       transformedPluginsTuple.map((code) =>
@@ -270,7 +261,6 @@ export async function makePlugin(
       )
     )
   ).map((f) => f.outputFiles[0].text);
-  console.timeEnd("minify and treeshake");
 
   // console.log("after transform:");
   let baseImportsStr = "";
@@ -306,7 +296,7 @@ export async function makePlugin(
       );
   }
 
-  return <PluginSub>finalPluginsTuple;
+  return [<PluginSub>finalPluginsTuple, version];
 }
 
 function uneval(l: any): string {
@@ -320,9 +310,9 @@ function uneval(l: any): string {
        *    init() { ... }
        *   }
        */
-      const stringified = l.toString();
+      const stringified: string = l.toString();
       const name = l.name;
-      return name && stringified.startsWith(name)
+      return name && new RegExp(`^(async )?${name}`).test(stringified)
         ? stringified.replace(name, "function")
         : stringified.toString();
     case l instanceof RegExp:
@@ -339,36 +329,4 @@ function uneval(l: any): string {
     default:
       return l;
   }
-}
-
-async function evalPlugin(code: string, resolveDir: string): Promise<IPlugin> {
-  /**
-   * TODO: proxy object here
-   */
-  const context = {
-    // this: {},
-    global: {},
-    exports: {},
-    module: {
-      exports: {},
-    },
-    PluginBase: mock(),
-  };
-  debugger;
-  vm.createContext(context);
-  if (!("SourceTextModule" in vm))
-    throw new Error("Must run node with --experimental-vm-modules");
-  // @ts-ignore
-  const mod = new vm.SourceTextModule(code, { context });
-  // there was code to link previously. It's no longer needed because
-  // now esbuild links in the bundling step.
-  // See git history
-  await mod.link(() => {
-    throw new Error(
-      "Unexpected linking. Code should have been linked by esbuild in a prior step!"
-    );
-  });
-  await mod.evaluate();
-  // console.log("default", mod.namespace.default);
-  return mod.namespace.default;
 }
