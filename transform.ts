@@ -2,17 +2,13 @@
  * Split the plugin into a frontend/backend and a matching/non-matching URL for
  * frontend. Frontend needs to be loaded on every page, so it should be lightweight.
  *
- * We don't operate on the eval'd plugin js because (eg. with the node VM module)
- * because there seems to be no straightforward way to reserialize the resulting
- * object that we create?
- *
- * (eg. Plugin.languages.ru = ..., later Plugin.languages.ru.commands = (morphed))
- * we don't operate solely on eval'd js, because it wouldn't allow certain things
- * like abstracting away PluginBase with {...PluginBase, { ...(plugin code)}}
+ * We operate on the eval'd plugin js because (with the node VM module)
+ * because manipulating the js object is much more straightforward, less tedious
+ * and less error prone.
  *
  * For frontend:
- *    * remove homophones
- *    * remove commands.match,description,fn,test,delay,nice,context,enterContext,plan
+ *    * remove homophones, contexts, settings and other props only needed on the backend
+ *    * remove command properties such as match, description, fn, test, delay etc.
  *    * replace non-default exports
  *    * TODO: remove commands that have no pageFn or dynamic match
  * Backend:
@@ -20,9 +16,8 @@
  *      only take what they need.
  */
 /// <reference types="lipsurf-types/extension"/>
-import resolve from "resolve";
-import { readFile } from "fs/promises";
-import { build, transform, transformSync } from "esbuild";
+import { mock } from "sinon";
+import { build } from "esbuild";
 import vm from "vm";
 import { PluginPartType } from "./util";
 import {
@@ -33,21 +28,6 @@ import {
   PLUS_PLAN,
   PREMIUM_PLAN,
 } from "lipsurf-common/cjs/constants";
-import {
-  ExportDefaultExpression,
-  KeyValueProperty,
-  ModuleDeclaration,
-  parseSync,
-} from "@swc/core";
-import {
-  Property,
-  SpreadElement,
-  ObjectExpression,
-  ArrayExpression,
-  NumericLiteral,
-} from "@swc/core";
-import Visitor from "@swc/core/Visitor";
-import { ExpressionStatement } from "typescript";
 const PLUGIN_PROPS_TO_REMOVE_FROM_CS = [
   "description",
   "homophones",
@@ -84,75 +64,7 @@ function versionConvertDots(v) {
   return v.replace(/\./g, "-");
 }
 
-// SpreadElement doesn't have generic
-interface WrappedExpression<T> {
-  spread: null;
-  expression: T;
-}
-
 class BlankPartError extends Error {}
-
-class PluginExportReplacer extends Visitor {
-  constructor(private pluginStr: string) {
-    super();
-  }
-
-  visitExportDefaultExpression(n: ExportDefaultExpression): ModuleDeclaration {
-    if (n.expression.type === "ObjectExpression") {
-      const pluginObjectExp = <KeyValueProperty>(
-        n.expression.properties.find((p) => p.type === "KeyValueProperty")
-      );
-      debugger;
-      if (pluginObjectExp) {
-        // @ts-ignore
-        pluginObjectExp.value = parseSync(this.pluginStr);
-      }
-    }
-    return n;
-  }
-}
-
-class Linker {
-  constructor(private resolver, private basedir: string) {}
-
-  async link(specifier, referencingModule) {
-    try {
-      console.log(
-        "baseDir",
-        this.basedir,
-        "specifier",
-        specifier,
-        "referencing module",
-        referencingModule
-      );
-      // let filePath;
-      // if (specifier.startsWith(".")) {
-      //   filePath = `${specifier}.js`;
-      // } else {
-      //   filePath = `./node_modules/${specifier}`;
-      // }
-      const filePath = await new Promise<string>((cb) =>
-        this.resolver(
-          specifier,
-          {
-            basedir: this.basedir,
-          },
-          (err, res) => cb(res)
-        )
-      );
-      console.log("filepath", filePath);
-      const file = await readFile(filePath, "utf8");
-      // @ts-ignore
-      return new vm.SourceTextModule(file, {
-        context: referencingModule.context,
-      });
-    } catch (e) {
-      throw new Error(`Error linking ${specifier}\n${e}`);
-    }
-    // Using `contextifiedObject` instead of `referencingModule.context`
-    // here would work as well.
-  }
-}
 
 function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
   for (const prop of PLUGIN_PROPS_TO_REMOVE_FROM_CS) {
@@ -197,6 +109,23 @@ function findClosingBrace(str: string, startPos) {
       return startPos.index;
     }
   }
+}
+
+function removeLanguageCodes(pluginId, code: string): string {
+  let res = code;
+  const regx = new RegExp(`${pluginId}_default\.languages\..{2} = {`);
+  let regxRes: RegExpExecArray | null;
+  let codeResOffset = 0;
+  do {
+    regxRes = regx.exec(res);
+    if (regxRes) {
+      const startBraceI = regxRes.index + regxRes[0].length;
+      res = res.substr(findClosingBrace(res, startBraceI) + 1);
+      code = `${code.substr(0, codeResOffset + regxRes.index)}${res}`;
+      codeResOffset += regxRes.index;
+    }
+  } while (regxRes);
+  return code;
 }
 
 export async function makePlugin(
@@ -255,10 +184,19 @@ export async function makePlugin(
   //     pluginSrcReplacementEndI
   //   )
   // );
+  const languageObjsRemovedCode = removeLanguageCodes(
+    pluginId,
+    resolvedPluginCode
+  );
 
   let i = 0;
   console.time("eval");
-  let parsedPluginObj = await evalPlugin(resolvedPluginCode, resolveDir);
+  let parsedPluginObj: IPlugin;
+  try {
+    parsedPluginObj = await evalPlugin(resolvedPluginCode, resolveDir);
+  } catch (e) {
+    throw new Error(`Error evaluating ${pluginId}: ${e}`);
+  }
   console.timeEnd("eval");
   console.time("makeParts");
   const cloneStr = JSON.stringify(parsedPluginObj);
@@ -269,12 +207,12 @@ export async function makePlugin(
     ).filter((x) => isNaN(Number(x)))) {
       let code: string;
       try {
-        code = `${resolvedPluginCode.substr(
+        code = `${languageObjsRemovedCode.substr(
           0,
           pluginSrcReplacementStartI
         )}...PluginBase, ...${uneval(
           makeCS(parsedPluginObj, plan, type)
-        )}${resolvedPluginCode.substr(pluginSrcReplacementEndI)}`;
+        )}${languageObjsRemovedCode.substr(pluginSrcReplacementEndI)}`;
       } catch (e) {
         if (e instanceof BlankPartError) code = "";
         else throw new Error(`Error transforming ${pluginId}.${plan} ${e}`);
@@ -321,6 +259,7 @@ export async function makePlugin(
           bundle: true,
           // for iife
           // globalName: `allPlugins.${pluginId}`,
+          treeShaking: true,
           minify: prod,
           format: "esm",
           minifyWhitespace: prod,
@@ -332,8 +271,6 @@ export async function makePlugin(
     )
   ).map((f) => f.outputFiles[0].text);
   console.timeEnd("minify and treeshake");
-
-  // console.log(splitPluginTuple[0]);
 
   // console.log("after transform:");
   let baseImportsStr = "";
@@ -361,8 +298,8 @@ export async function makePlugin(
           ...matchingNonMatching.map(
             (s) =>
               `allPlugins.${pluginId} = (() => { ${s.replace(
-                `export default require_${pluginId}()`,
-                `return require_${pluginId}().default`
+                /export {\s+dumby_default as default\s+};/,
+                `return dumby_default;`
               )} })();`
           ),
         ].join(PLUGIN_SPLIT_SEQ)
@@ -373,11 +310,21 @@ export async function makePlugin(
 }
 
 function uneval(l: any): string {
-  debugger;
   switch (true) {
     // case l instanceof Function: // (does not work for async functions)
     case typeof l === "function":
-      return l.toString();
+      /**
+       * Handle named functions.
+       * e.g.
+       *   {
+       *    init() { ... }
+       *   }
+       */
+      const stringified = l.toString();
+      const name = l.name;
+      return name && stringified.startsWith(name)
+        ? stringified.replace(name, "function")
+        : stringified.toString();
     case l instanceof RegExp:
       return `new RegExp("${l.source}", "${l.flags}")`;
     case Array.isArray(l):
@@ -395,6 +342,9 @@ function uneval(l: any): string {
 }
 
 async function evalPlugin(code: string, resolveDir: string): Promise<IPlugin> {
+  /**
+   * TODO: proxy object here
+   */
   const context = {
     // this: {},
     global: {},
@@ -402,23 +352,22 @@ async function evalPlugin(code: string, resolveDir: string): Promise<IPlugin> {
     module: {
       exports: {},
     },
-    PluginBase: {
-      languages: {},
-    },
+    PluginBase: mock(),
   };
-  const linker = new Linker(resolve, resolveDir);
+  debugger;
   vm.createContext(context);
   if (!("SourceTextModule" in vm))
     throw new Error("Must run node with --experimental-vm-modules");
   // @ts-ignore
   const mod = new vm.SourceTextModule(code, { context });
-  let linked;
-  try {
-    linked = await mod.link(linker.link.bind(linker));
-  } catch (e) {
-    console.error(`linking error`, e);
-  }
-  debugger;
+  // there was code to link previously. It's no longer needed because
+  // now esbuild links in the bundling step.
+  // See git history
+  await mod.link(() => {
+    throw new Error(
+      "Unexpected linking. Code should have been linked by esbuild in a prior step!"
+    );
+  });
   await mod.evaluate();
   // console.log("default", mod.namespace.default);
   return mod.namespace.default;
