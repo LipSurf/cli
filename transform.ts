@@ -19,6 +19,7 @@
 import { build } from "esbuild";
 import { PluginPartType } from "./util";
 import { evalPlugin } from "./evaluator";
+import clone from "clone";
 import {
   PLANS,
   PLUGIN_SPLIT_SEQ,
@@ -56,21 +57,62 @@ const COMMAND_PROPS_TO_REMOVE_FROM_CS = [
   "activeDocument",
 ];
 
+const PLUGIN_BASE_PROPS = [
+  "annotations",
+  "util",
+  "help",
+  "constants",
+  "languages",
+];
+
 const importPluginBase = `import PluginBase from 'chrome-extension://${EXT_ID}/dist/modules/plugin-base.js';`;
 const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://${EXT_ID}/dist/modules/extension-util.js';`;
 
-function versionConvertDots(v) {
-  return v.replace(/\./g, "-");
-}
-
 class BlankPartError extends Error {}
 
+function replaceCmdsAbovePlan(plugin: IPlugin, buildForPlan: plan): IPlugin {
+  let cmdsOnThisPlan: boolean = false;
+  const pluginPlan = plugin.plan || 0;
+  // if nothing is replaced, and the highestLevel is lower than build for plan, then return false so we
+  // don't build for this level (the highest level might have been 10 or 0, and already built)
+  plugin.commands = plugin.commands.map((cmd) => {
+    const cmdPlan = cmd.plan;
+    const minNeededPlan = cmdPlan ? cmdPlan : pluginPlan;
+    let replace = false;
+    if (!cmdPlan) {
+      if (pluginPlan === buildForPlan) cmdsOnThisPlan = true;
+      else if (pluginPlan > buildForPlan) replace = true;
+    } else {
+      if (buildForPlan === cmdPlan) cmdsOnThisPlan = true;
+      if (minNeededPlan > buildForPlan) replace = true;
+    }
+    if (replace) {
+      // @ts-ignore
+      cmd.pageFn = new Function(
+        `showNeedsUpgradeError({plan: ${minNeededPlan}})`
+      );
+    }
+    return cmd;
+  });
+  if (!cmdsOnThisPlan && buildForPlan !== 0) throw new BlankPartError();
+  return plugin;
+}
+
 function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
+  // must happen before we remove COMMAND_PROPS_TO_REMOVE_FROM_CS and PLUGIN_PROPS_TO_REMOVE_FROM_CS
+  // since both have plan property
+  plugin = replaceCmdsAbovePlan(plugin, plan);
+
   for (const prop of PLUGIN_PROPS_TO_REMOVE_FROM_CS) {
     delete plugin[prop];
   }
+
   for (let i = plugin.commands.length - 1; i >= 0; i--) {
     const cmd = plugin.commands[i];
+    if (type === PluginPartType.nonmatching && !cmd.global) {
+      plugin.commands.splice(i, 1);
+      continue;
+    }
     for (const prop of COMMAND_PROPS_TO_REMOVE_FROM_CS) {
       delete cmd[prop];
     }
@@ -91,10 +133,19 @@ function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
       // @ts-ignore
       delete cmd.match;
     }
+    if (typeof cmd.nice !== "function") {
+      delete cmd.nice;
+    }
     // only the name key
     if (Object.keys(cmd).length === 1) plugin.commands.splice(i, 1);
   }
-  delete plugin.languages;
+  if (!plugin.commands.length && !plugin.init && !plugin.destroy)
+    throw new BlankPartError();
+
+  // remove plugin-base props
+  for (const prop of PLUGIN_BASE_PROPS) {
+    delete plugin[prop];
+  }
   return plugin;
 }
 
@@ -172,13 +223,6 @@ export async function makePlugin(
     pluginSrcReplacementStartI
   );
 
-  // console.log("start", pluginSrcReplacementStartI, pluginSrcReplacementEndI);
-  // console.log(
-  //   resolvedPluginCode.substring(
-  //     pluginSrcReplacementStartI,
-  //     pluginSrcReplacementEndI
-  //   )
-  // );
   const languageObjsRemovedCode = removeLanguageCodes(
     pluginId,
     resolvedPluginCode
@@ -189,22 +233,22 @@ export async function makePlugin(
   try {
     parsedPluginObj = await evalPlugin(resolvedPluginCode);
   } catch (e) {
-    throw new Error(`Error evaluating ${pluginId}: ${e}`);
+    throw new Error(`Error evaluating ${e}`);
   }
   const version = parsedPluginObj.version || "1.0.0";
-  const cloneStr = JSON.stringify(parsedPluginObj);
+  let cloned = clone(parsedPluginObj, false);
   for (const plan of PLANS) {
     let type: PluginPartType;
-    for (type of Object.values<PluginPartType>(
-      <any>PluginPartType
-    ).filter((x) => isNaN(Number(x)))) {
+    for (type of Object.values<PluginPartType>(<any>PluginPartType).filter(
+      (x) => !isNaN(Number(x))
+    )) {
       let code: string;
       try {
         code = `${languageObjsRemovedCode.substr(
           0,
           pluginSrcReplacementStartI
         )}...PluginBase, ...${uneval(
-          makeCS(parsedPluginObj, plan, type)
+          makeCS(cloned, plan, type)
         )}${languageObjsRemovedCode.substr(pluginSrcReplacementEndI)}`;
       } catch (e) {
         if (e instanceof BlankPartError) code = "";
@@ -212,9 +256,12 @@ export async function makePlugin(
       }
       byPlanAndMatching[plan][type] = code;
       // work with copies
+      // don't need to make an extra copy at the end (small perf improvement)
       if (i != 5) {
         i++;
-        parsedPluginObj = JSON.parse(cloneStr);
+        cloned = clone(parsedPluginObj, false);
+      } else {
+        cloned = parsedPluginObj;
       }
     }
   }
@@ -224,8 +271,8 @@ export async function makePlugin(
     ...PLANS.reduce(
       (memo, p) =>
         memo.concat([
-          byPlanAndMatching[p]["matching"],
-          byPlanAndMatching[p]["nonmatching"],
+          byPlanAndMatching[p][PluginPartType.matching],
+          byPlanAndMatching[p][PluginPartType.nonmatching],
         ]),
       []
     ),
@@ -285,12 +332,13 @@ export async function makePlugin(
       finalPluginsTuple.push(
         [
           baseImportsStr + splitPluginTuple[0],
-          ...matchingNonMatching.map(
-            (s) =>
-              `allPlugins.${pluginId} = (() => { ${s.replace(
-                /export {\s+dumby_default as default\s+};/,
-                `return dumby_default;`
-              )} })();`
+          ...matchingNonMatching.map((s) =>
+            s
+              ? `allPlugins.${pluginId} = (() => { ${s.replace(
+                  /export {\s+dumby_default as default\s+};/,
+                  `return dumby_default;`
+                )} })();`
+              : ""
           ),
         ].join(PLUGIN_SPLIT_SEQ)
       );

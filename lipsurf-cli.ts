@@ -45,6 +45,10 @@ function getAllPluginIds(files: string[]) {
   );
 }
 
+function versionConvertDots(v) {
+  return v.replace(/\./g, "-");
+}
+
 async function build(options, plugins?) {
   if (typeof plugins === "undefined") plugins = [];
   let pluginIds = <string[]>[].concat(plugins);
@@ -59,7 +63,7 @@ async function build(options, plugins?) {
   if (watch) {
   } else {
     const p: Promise<void>[] = [];
-    // await compile(globbedTs);
+    await compile(globbedTs);
     for (const pluginId of pluginIds) {
       const pluginWLanguageFiles = globbedTs
         .map((f) => f.replace(/^src\//, "dist/tmp/").replace(/.ts$/, ".js"))
@@ -70,16 +74,25 @@ async function build(options, plugins?) {
         pluginWLanguageFiles[0].lastIndexOf("/")
       );
       p.push(
-        makePlugin(pluginId, pluginWLanguageFiles, resolveDir).then((res) => {
-          const version = res[1];
-          res[0].forEach((c, i) => {
-            if (c)
-              fs.writeFile(
-                `${join(options.outDir, pluginId)}.${version}.${PLANS[i]}.ls`,
-                c
-              );
-          });
-        })
+        makePlugin(
+          pluginId,
+          pluginWLanguageFiles,
+          resolveDir,
+          process.env.NODE_ENV === "production"
+        )
+          .then((res) => {
+            const version = versionConvertDots(res[1]);
+            res[0].forEach((c, i) => {
+              if (c)
+                fs.writeFile(
+                  `${join(options.outDir, pluginId)}.${version}.${PLANS[i]}.ls`,
+                  c
+                );
+            });
+          })
+          .catch((e) => {
+            console.error(`Error making ${pluginId}: ${e}`);
+          })
       );
     }
     await Promise.all(p);

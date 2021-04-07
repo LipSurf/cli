@@ -53,6 +53,12 @@ export async function evalPlugin(
     // this: {},
     global: {},
     exports: {},
+    window: {
+      addEventListener: () => null,
+    },
+    document: {
+      getElementById: () => null,
+    },
     module: {
       exports: {},
     },
@@ -66,6 +72,8 @@ export async function evalPlugin(
       util: {
         getNoCollisionUniqueAttr: () => null,
       },
+      help: {},
+      annotations: {},
       languages: {},
     },
   };

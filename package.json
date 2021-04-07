@@ -1,6 +1,6 @@
 {
   "name": "lipsurf-cli",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "bin": {
     "lipsurf-cli": "./lib/lipsurf-cli.js"
   },
@@ -9,9 +9,9 @@
   },
   "author": "Miko Borys",
   "dependencies": {
+    "clone": "^2.1.2",
     "commander": "^4.1.1",
-    "esbuild": "^0.11.5",
-    "tslib": "^1"
+    "esbuild": "^0.11.5"
   },
   "devDependencies": {
     "@types/node": "^14.14.37",
@@ -22,7 +22,7 @@
     "typescript": "~4.0.2"
   },
   "engines": {
-    "node": ">=12.0.0"
+    "node": ">=14.0.0"
   },
   "homepage": "https://github.com/LipSurf/lipsurf-cli",
   "license": "MIT",
