@@ -86,7 +86,8 @@ async function build(options, plugins?) {
               if (c)
                 fs.writeFile(
                   `${join(options.outDir, pluginId)}.${version}.${PLANS[i]}.ls`,
-                  c
+                  c,
+                  "utf8"
                 );
             });
           })

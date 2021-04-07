@@ -209,6 +209,7 @@ export async function makePlugin(
       resolveDir,
       loader: "js",
     },
+    charset: "utf8",
     format: "esm",
     write: false,
     bundle: true,
@@ -318,6 +319,7 @@ export async function makePlugin(
               resolveDir,
               loader: "js",
             },
+            charset: "utf8",
             write: false,
             bundle: true,
             // for iife
