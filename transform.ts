@@ -1,4 +1,4 @@
-/**
+/*;
  * Split the plugin into a frontend/backend and a matching/non-matching URL for
  * frontend. Frontend needs to be loaded on every page, so it should be lightweight.
  *
@@ -19,6 +19,7 @@
 import { build } from "esbuild";
 import { PluginPartType } from "./util";
 import { evalPlugin } from "./evaluator";
+import { keyBy, mapValues, omit } from "lodash";
 import clone from "clone";
 import {
   PLANS,
@@ -116,8 +117,11 @@ function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
     for (const prop of COMMAND_PROPS_TO_REMOVE_FROM_CS) {
       delete cmd[prop];
     }
-    // merge localized match fns into the plugin.commands.match object
-    if (cmd.match === Object(cmd.match)) {
+    if (Array.isArray(cmd.match) || typeof cmd.match === "string") {
+      // @ts-ignore
+      delete cmd.match;
+    } else {
+      // merge localized match fns into the plugin.commands.match object
       const oldMatch = cmd.match;
       // @ts-ignore
       cmd.match = Object.keys(plugin.languages || []).reduce(
@@ -129,9 +133,6 @@ function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
         },
         { en: oldMatch }
       );
-    } else {
-      // @ts-ignore
-      delete cmd.match;
     }
     if (typeof cmd.nice !== "function") {
       delete cmd.nice;
@@ -141,6 +142,11 @@ function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
   }
   if (!plugin.commands.length && !plugin.init && !plugin.destroy)
     throw new BlankPartError();
+
+  // array to obj
+  plugin.commands = mapValues(keyBy(plugin.commands, "name"), (v) =>
+    omit(v, "name")
+  );
 
   // remove plugin-base props
   for (const prop of PLUGIN_BASE_PROPS) {
@@ -196,19 +202,19 @@ export async function makePlugin(
   ].join("\n");
 
   // bundle the deps
-  const resolvedPluginCode = (
-    await build({
-      stdin: {
-        contents: importPluginDepsCode,
-        sourcefile: `dumby.js`,
-        resolveDir,
-        loader: "js",
-      },
-      format: "esm",
-      write: false,
-      bundle: true,
-    })
-  ).outputFiles[0].text;
+  const buildRes = await build({
+    stdin: {
+      contents: importPluginDepsCode,
+      sourcefile: `dumby.js`,
+      resolveDir,
+      loader: "js",
+    },
+    format: "esm",
+    write: false,
+    bundle: true,
+    incremental: true,
+  });
+  const resolvedPluginCode = buildRes.outputFiles[0].text;
 
   const byPlanAndMatching = {
     [FREE_PLAN]: {},
@@ -254,7 +260,24 @@ export async function makePlugin(
         if (e instanceof BlankPartError) code = "";
         else throw new Error(`Error transforming ${pluginId}.${plan} ${e}`);
       }
-      byPlanAndMatching[plan][type] = code;
+      /**
+       * Might look like this for production build:
+       * var t = { ... },
+       * l = t;
+       * export {
+       *  l as
+       *  default
+       */
+      byPlanAndMatching[plan][type] = code
+        ? `allPlugins.${pluginId} = (() => { ${code
+            .replace(`var ${pluginId}_default =`, "return")
+            .replace(
+              new RegExp(
+                `var\\s*dumby_default\\s*=\\s*${pluginId}_default;\\s*export\\s+{\\s*dumby_default\\s+as\\s+default\\s*};?`
+              ),
+              ``
+            )} })();`
+        : "";
       // work with copies
       // don't need to make an extra copy at the end (small perf improvement)
       if (i != 5) {
@@ -274,40 +297,46 @@ export async function makePlugin(
           byPlanAndMatching[p][PluginPartType.matching],
           byPlanAndMatching[p][PluginPartType.nonmatching],
         ]),
-      []
+      <string[]>[]
     ),
   ];
   // console.log("after transform:\n", transformedPluginsTuple[1]);
   // console.log("after transform (nonmatching):\n", transformedPluginsTuple[2]);
+  debugger;
 
   // Only for minifying and treeshaking
-  const splitPluginTuple = (
-    await Promise.all(
-      transformedPluginsTuple.map((code) =>
-        build({
-          // entryPoints: ,
-          // outdir: options.outDir,
-          stdin: {
-            contents: code,
-            sourcefile: `${pluginId}.js`,
-            resolveDir,
-            loader: "js",
-          },
-          write: false,
-          bundle: true,
-          // for iife
-          // globalName: `allPlugins.${pluginId}`,
-          treeShaking: true,
-          minify: prod,
-          format: "esm",
-          minifyWhitespace: prod,
-          minifySyntax: true,
-          // defaults to esNext (we build to the target with tsc)
-          // target: "es2019",
-        })
-      )
+  const builtParts = await Promise.all(
+    transformedPluginsTuple.map((code, i) =>
+      // it would put in the allPlugins.${pluginId} = ... code if we build with code=""
+      code
+        ? build({
+            // entryPoints: ,
+            // outdir: options.outDir,
+            stdin: {
+              contents: code,
+              sourcefile: `${pluginId}.js`,
+              resolveDir,
+              loader: "js",
+            },
+            write: false,
+            bundle: true,
+            // for iife
+            globalName: `allPlugins.${pluginId}`,
+            treeShaking: true,
+            minify: prod,
+            format: "esm",
+            minifyWhitespace: prod,
+            minifySyntax: true,
+            incremental: true,
+            // defaults to esNext (we build to the target with tsc)
+            // target: "es2019",
+          })
+        : { outputFiles: [{ text: "" }] }
     )
-  ).map((f) => f.outputFiles[0].text);
+  );
+  const splitPluginTuple = builtParts.map((f) =>
+    f ? f.outputFiles[0].text : f
+  );
 
   // console.log("after transform:");
   let baseImportsStr = "";
@@ -330,19 +359,15 @@ export async function makePlugin(
       finalPluginsTuple.push("");
     else
       finalPluginsTuple.push(
-        [
-          baseImportsStr + splitPluginTuple[0],
-          ...matchingNonMatching.map((s) =>
-            s
-              ? `allPlugins.${pluginId} = (() => { ${s.replace(
-                  /export {\s+dumby_default as default\s+};/,
-                  `return dumby_default;`
-                )} })();`
-              : ""
-          ),
-        ].join(PLUGIN_SPLIT_SEQ)
+        [baseImportsStr + splitPluginTuple[0], ...matchingNonMatching].join(
+          PLUGIN_SPLIT_SEQ
+        )
       );
   }
+  // cleanup
+  // @ts-ignore
+  builtParts.map((b) => b?.rebuild?.dispose());
+  buildRes.rebuild?.dispose();
 
   return [<PluginSub>finalPluginsTuple, version];
 }
