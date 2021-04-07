@@ -16,7 +16,7 @@
  *      only take what they need.
  */
 /// <reference types="lipsurf-types/extension"/>
-import { build } from "esbuild";
+import { build, BuildIncremental } from "esbuild";
 import { PluginPartType } from "./util";
 import { evalPlugin } from "./evaluator";
 import { keyBy, mapValues, omit } from "lodash";
@@ -191,187 +191,198 @@ export async function makePlugin(
   prod = false,
   baseImports = true
 ): Promise<[pluginForSub: PluginSub, version: string]> {
-  const importPluginDepsCode = [
-    ...pluginWLanguageFiles.map((x, i) => {
-      const name = x.substring(x.lastIndexOf("/") + 1, x.length - 3);
-      return i === 0
-        ? `import plugin from "./${name}";`
-        : `import "./${name}";`;
-    }),
-    `export default plugin;`,
-  ].join("\n");
-
-  // bundle the deps
-  const buildRes = await build({
-    stdin: {
-      contents: importPluginDepsCode,
-      sourcefile: `dumby.js`,
-      resolveDir,
-      loader: "js",
-    },
-    charset: "utf8",
-    format: "esm",
-    write: false,
-    bundle: true,
-    incremental: true,
-  });
-  const resolvedPluginCode = buildRes.outputFiles[0].text;
-
-  const byPlanAndMatching = {
-    [FREE_PLAN]: {},
-    [PLUS_PLAN]: {},
-    [PREMIUM_PLAN]: {},
-  };
-  const searchQ = `var ${pluginId}_default = {`;
-  const pluginSrcReplacementStartI =
-    resolvedPluginCode.search(new RegExp(searchQ)) + searchQ.length;
-  const pluginSrcReplacementEndI = findClosingBrace(
-    resolvedPluginCode,
-    pluginSrcReplacementStartI
-  );
-
-  const languageObjsRemovedCode = removeLanguageCodes(
-    pluginId,
-    resolvedPluginCode
-  );
-
-  let i = 0;
-  let parsedPluginObj: IPlugin;
+  let buildRes;
+  let builtPartsPassed: any[] = [];
   try {
-    parsedPluginObj = await evalPlugin(resolvedPluginCode);
-  } catch (e) {
-    throw new Error(`Error evaluating ${e}`);
-  }
-  const version = parsedPluginObj.version || "1.0.0";
-  let cloned = clone(parsedPluginObj, false);
-  for (const plan of PLANS) {
-    let type: PluginPartType;
-    for (type of Object.values<PluginPartType>(<any>PluginPartType).filter(
-      (x) => !isNaN(Number(x))
-    )) {
-      let code: string;
-      try {
-        code = `${languageObjsRemovedCode.substr(
-          0,
-          pluginSrcReplacementStartI
-        )}...PluginBase, ...${uneval(
-          makeCS(cloned, plan, type)
-        )}${languageObjsRemovedCode.substr(pluginSrcReplacementEndI)}`;
-      } catch (e) {
-        if (e instanceof BlankPartError) code = "";
-        else throw new Error(`Error transforming ${pluginId}.${plan} ${e}`);
-      }
-      /**
-       * Might look like this for production build:
-       * var t = { ... },
-       * l = t;
-       * export {
-       *  l as
-       *  default
-       */
-      byPlanAndMatching[plan][type] = code
-        ? `allPlugins.${pluginId} = (() => { ${code
-            .replace(`var ${pluginId}_default =`, "return")
-            .replace(
-              new RegExp(
-                `var\\s*dumby_default\\s*=\\s*${pluginId}_default;\\s*export\\s+{\\s*dumby_default\\s+as\\s+default\\s*};?`
-              ),
-              ``
-            )} })();`
-        : "";
-      // work with copies
-      // don't need to make an extra copy at the end (small perf improvement)
-      if (i != 5) {
-        i++;
-        cloned = clone(parsedPluginObj, false);
-      } else {
-        cloned = parsedPluginObj;
+    const importPluginDepsCode = [
+      ...pluginWLanguageFiles.map((x, i) => {
+        const name = x.substring(x.lastIndexOf("/") + 1, x.length - 3);
+        return i === 0
+          ? `import plugin from "./${name}";`
+          : `import "./${name}";`;
+      }),
+      `export default plugin;`,
+    ].join("\n");
+
+    // bundle the deps
+    buildRes = await build({
+      stdin: {
+        contents: importPluginDepsCode,
+        sourcefile: `dumby.js`,
+        resolveDir,
+        loader: "js",
+      },
+      charset: "utf8",
+      format: "esm",
+      write: false,
+      bundle: true,
+      incremental: true,
+    });
+    let resolvedPluginCode = buildRes.outputFiles[0].text;
+
+    resolvedPluginCode = resolvedPluginCode.replace(
+      "...PluginBase",
+      "...PluginBase, ...{languages: {}}"
+    );
+
+    const byPlanAndMatching = {
+      [FREE_PLAN]: {},
+      [PLUS_PLAN]: {},
+      [PREMIUM_PLAN]: {},
+    };
+    const searchQ = `var ${pluginId}_default = {`;
+    const pluginSrcReplacementStartI =
+      resolvedPluginCode.search(new RegExp(searchQ)) + searchQ.length;
+    const pluginSrcReplacementEndI = findClosingBrace(
+      resolvedPluginCode,
+      pluginSrcReplacementStartI
+    );
+
+    const languageObjsRemovedCode = removeLanguageCodes(
+      pluginId,
+      resolvedPluginCode
+    );
+
+    let i = 0;
+    let parsedPluginObj: IPlugin;
+    try {
+      parsedPluginObj = await evalPlugin(resolvedPluginCode);
+    } catch (e) {
+      throw new Error(`Error evaluating ${e}`);
+    }
+    const version = parsedPluginObj.version || "1.0.0";
+    let cloned = clone(parsedPluginObj, false);
+    for (const plan of PLANS) {
+      let type: PluginPartType;
+      for (type of Object.values<PluginPartType>(<any>PluginPartType).filter(
+        (x) => !isNaN(Number(x))
+      )) {
+        let code: string;
+        try {
+          code = `${languageObjsRemovedCode.substr(
+            0,
+            pluginSrcReplacementStartI
+          )}...PluginBase, ...${uneval(
+            makeCS(cloned, plan, type)
+          )}${languageObjsRemovedCode.substr(pluginSrcReplacementEndI)}`;
+        } catch (e) {
+          if (e instanceof BlankPartError) code = "";
+          else throw new Error(`Error transforming ${pluginId}.${plan} ${e}`);
+        }
+        /**
+         * Might look like this for production build:
+         * var t = { ... },
+         * l = t;
+         * export {
+         *  l as
+         *  default
+         */
+        byPlanAndMatching[plan][type] = code
+          ? `allPlugins.${pluginId} = (() => { ${code
+              .replace(`var ${pluginId}_default =`, "return")
+              .replace(
+                new RegExp(
+                  `var\\s*dumby_default\\s*=\\s*${pluginId}_default;\\s*export\\s+{\\s*dumby_default\\s+as\\s+default\\s*};?`
+                ),
+                ``
+              )} })();`
+          : "";
+        // work with copies
+        // don't need to make an extra copy at the end (small perf improvement)
+        if (i != 5) {
+          i++;
+          cloned = clone(parsedPluginObj, false);
+        } else {
+          cloned = parsedPluginObj;
+        }
       }
     }
-  }
 
-  const transformedPluginsTuple = [
-    resolvedPluginCode,
-    ...PLANS.reduce(
-      (memo, p) =>
-        memo.concat([
-          byPlanAndMatching[p][PluginPartType.matching],
-          byPlanAndMatching[p][PluginPartType.nonmatching],
-        ]),
-      <string[]>[]
-    ),
-  ];
-  // console.log("after transform:\n", transformedPluginsTuple[1]);
-  // console.log("after transform (nonmatching):\n", transformedPluginsTuple[2]);
-  debugger;
+    const transformedPluginsTuple = [
+      resolvedPluginCode,
+      ...PLANS.reduce(
+        (memo, p) =>
+          memo.concat([
+            byPlanAndMatching[p][PluginPartType.matching],
+            byPlanAndMatching[p][PluginPartType.nonmatching],
+          ]),
+        <string[]>[]
+      ),
+    ];
 
-  // Only for minifying and treeshaking
-  const builtParts = await Promise.all(
-    transformedPluginsTuple.map((code, i) =>
-      // it would put in the allPlugins.${pluginId} = ... code if we build with code=""
-      code
-        ? build({
-            // entryPoints: ,
-            // outdir: options.outDir,
-            stdin: {
-              contents: code,
-              sourcefile: `${pluginId}.js`,
-              resolveDir,
-              loader: "js",
-            },
-            charset: "utf8",
-            write: false,
-            bundle: true,
-            // for iife
-            globalName: `allPlugins.${pluginId}`,
-            treeShaking: true,
-            minify: prod,
-            format: "esm",
-            minifyWhitespace: prod,
-            minifySyntax: true,
-            incremental: true,
-            // defaults to esNext (we build to the target with tsc)
-            // target: "es2019",
-          })
-        : { outputFiles: [{ text: "" }] }
-    )
-  );
-  const splitPluginTuple = builtParts.map((f) =>
-    f ? f.outputFiles[0].text : f
-  );
-
-  // console.log("after transform:");
-  let baseImportsStr = "";
-  if (baseImports) {
-    baseImportsStr = importPluginBase + importExtensionUtil;
-  }
-
-  const finalPluginsTuple: Partial<PluginSub> = [];
-  // combine the files into .ls file
-  for (let i = 0; i < PLANS.length; i++) {
-    const matchingNonMatching = splitPluginTuple.slice(
-      i * 2 + 1,
-      (1 + i) * 2 + 1
+    // Only for minifying and treeshaking
+    const builtParts = await Promise.all(
+      transformedPluginsTuple.map((code, i) =>
+        // it would put in the allPlugins.${pluginId} = ... code if we build with code=""
+        code
+          ? build({
+              // entryPoints: ,
+              // outdir: options.outDir,
+              stdin: {
+                contents: code,
+                sourcefile: `${pluginId}.js`,
+                resolveDir,
+                loader: "js",
+              },
+              charset: "utf8",
+              write: false,
+              bundle: true,
+              // for iife
+              globalName: `allPlugins.${pluginId}`,
+              treeShaking: true,
+              minify: prod,
+              format: "esm",
+              minifyWhitespace: prod,
+              minifySyntax: true,
+              incremental: true,
+              // defaults to esNext (we build to the target with tsc)
+              // target: "es2019",
+            })
+              .then((res) => {
+                builtPartsPassed.push(res);
+                return res;
+              })
+              .catch((e) => {
+                throw new Error(`Error building ${i}\n${e}`);
+              })
+          : Promise.resolve({ outputFiles: [{ text: "" }] })
+      )
     );
-    if (
-      PLANS[i] !== FREE_PLAN &&
-      matchingNonMatching.reduce((memo, x) => memo + x.length, 0) === 0
-    )
-      // no plugin for this level
-      finalPluginsTuple.push("");
-    else
-      finalPluginsTuple.push(
-        [baseImportsStr + splitPluginTuple[0], ...matchingNonMatching].join(
-          PLUGIN_SPLIT_SEQ
-        )
-      );
-  }
-  // cleanup
-  // @ts-ignore
-  builtParts.map((b) => b?.rebuild?.dispose());
-  buildRes.rebuild?.dispose();
+    const splitPluginTuple = builtParts.map((f) =>
+      f ? f.outputFiles[0].text : f
+    );
 
-  return [<PluginSub>finalPluginsTuple, version];
+    let baseImportsStr = "";
+    if (baseImports) {
+      baseImportsStr = importPluginBase + importExtensionUtil;
+    }
+
+    const finalPluginsTuple: Partial<PluginSub> = [];
+    // combine the files into .ls file
+    for (let i = 0; i < PLANS.length; i++) {
+      const matchingNonMatching = splitPluginTuple.slice(
+        i * 2 + 1,
+        (1 + i) * 2 + 1
+      );
+      if (
+        PLANS[i] !== FREE_PLAN &&
+        matchingNonMatching.reduce((memo, x) => memo + x.length, 0) === 0
+      )
+        // no plugin for this level
+        finalPluginsTuple.push("");
+      else
+        finalPluginsTuple.push(
+          [baseImportsStr + splitPluginTuple[0], ...matchingNonMatching].join(
+            PLUGIN_SPLIT_SEQ
+          )
+        );
+    }
+    return [<PluginSub>finalPluginsTuple, version];
+  } finally {
+    // cleanup
+    builtPartsPassed.map((b) => b?.rebuild?.dispose());
+    buildRes.rebuild?.dispose();
+  }
 }
 
 function uneval(l: any): string {

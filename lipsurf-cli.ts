@@ -53,6 +53,8 @@ async function build(options, plugins?) {
   if (typeof plugins === "undefined") plugins = [];
   let pluginIds = <string[]>[].concat(plugins);
   const watch = options.watch;
+  let timeEnd: Date;
+  let error = false;
   const timeStart = new Date();
   const globbedTs = globby.sync(["src/*/*.ts", "!src/@types"]);
   if (!pluginIds.length) {
@@ -92,14 +94,20 @@ async function build(options, plugins?) {
             });
           })
           .catch((e) => {
-            console.error(`Error making ${pluginId}: ${e}`);
+            console.error(`Error building ${pluginId}: ${e}`);
           })
       );
     }
-    await Promise.all(p);
-    const timeEnd = new Date();
+    await Promise.all(p)
+      .catch((e) => {
+        error = true;
+        throw e;
+      })
+      .finally(() => {
+        timeEnd = new Date();
+      });
     console.log(
-      `Done building in ${Math.round((+timeEnd - +timeStart) / 1000)} seconds.`
+      `Done building in ${Math.round((+timeEnd! - +timeStart) / 1000)} seconds.`
     );
   }
 }
