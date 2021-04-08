@@ -131,7 +131,7 @@ function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
           if (localizedFn) memo[lang] = localizedFn;
           return memo;
         },
-        { en: oldMatch }
+        { en: oldMatch.fn }
       );
     }
     if (typeof cmd.nice !== "function") {
