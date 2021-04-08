@@ -34,7 +34,11 @@ export function compile(fileNames: string[]) {
     parseConfigHost,
     "./"
   );
-  let program = createProgram(fileNames, parsedConfig.options);
+  // rootDir: src ensures that we consistently make the plugin directories in dist/tmp/
+  let program = createProgram(fileNames, {
+    ...parsedConfig.options,
+    rootDir: "src",
+  });
   let emitResult = program.emit();
 
   let allDiagnostics = getPreEmitDiagnostics(program).concat(

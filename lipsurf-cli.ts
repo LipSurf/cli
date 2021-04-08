@@ -56,9 +56,12 @@ async function build(options, plugins?) {
   let timeEnd: Date;
   let error = false;
   const timeStart = new Date();
-  const globbedTs = globby.sync(["src/*/*.ts", "!src/@types"]);
+  let globbedTs: string[];
   if (!pluginIds.length) {
+    globbedTs = globby.sync(["src/*/*.ts", "!src/@types"]);
     pluginIds = getAllPluginIds(globbedTs);
+  } else {
+    globbedTs = globby.sync(pluginIds.map((p) => `src/${p}/*.ts`));
   }
   console.log("Building plugins:", pluginIds);
 

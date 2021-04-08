@@ -251,6 +251,10 @@ export async function makePlugin(
       throw new Error(`Error evaluating ${e}`);
     }
     const version = parsedPluginObj.version || "1.0.0";
+    const exportRegx = new RegExp(
+      `var\\s*dumby_default\\s*=\\s*${pluginId}_default;\\s*export\\s+{\\s*dumby_default\\s+as\\s+default\\s*};?`
+    );
+
     let cloned = clone(parsedPluginObj, false);
     for (const plan of PLANS) {
       let type: PluginPartType;
@@ -277,15 +281,13 @@ export async function makePlugin(
          *  l as
          *  default
          */
+        if (code && !exportRegx.test(code)) {
+          throw new Error("Could not find the export regx in code");
+        }
         byPlanAndMatching[plan][type] = code
           ? `allPlugins.${pluginId} = (() => { ${code
               .replace(`var ${pluginId}_default =`, "return")
-              .replace(
-                new RegExp(
-                  `var\\s*dumby_default\\s*=\\s*${pluginId}_default;\\s*export\\s+{\\s*dumby_default\\s+as\\s+default\\s*};?`
-                ),
-                ``
-              )} })();`
+              .replace(exportRegx, "")} })();`
           : "";
         // work with copies
         // don't need to make an extra copy at the end (small perf improvement)
@@ -328,15 +330,16 @@ export async function makePlugin(
               write: false,
               bundle: true,
               // for iife
-              globalName: `allPlugins.${pluginId}`,
+              // format: "iife",
+              // globalName: `allPlugins.${pluginId}`,
+              format: "esm",
               treeShaking: true,
               minify: prod,
-              format: "esm",
               minifyWhitespace: prod,
               minifySyntax: true,
               incremental: true,
               // defaults to esNext (we build to the target with tsc)
-              // target: "es2019",
+              target: "es2019",
             })
               .then((res) => {
                 builtPartsPassed.push(res);
