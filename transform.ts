@@ -16,10 +16,19 @@
  *      only take what they need.
  */
 /// <reference types="lipsurf-types/extension"/>
-import { build, BuildIncremental } from "esbuild";
+import { build } from "esbuild";
 import { PluginPartType } from "./util";
 import { evalPlugin } from "./evaluator";
 import { keyBy, mapValues, omit } from "lodash";
+import {
+  Expression,
+  StringLiteral,
+  ExpressionStatement,
+  CallExpression,
+  Script,
+  printSync,
+} from "@swc/core";
+import Visitor from "@swc/core/Visitor";
 import clone from "clone";
 import {
   PLANS,
@@ -29,6 +38,7 @@ import {
   PLUS_PLAN,
   PREMIUM_PLAN,
 } from "lipsurf-common/cjs/constants";
+const REPLACED_FN_SYMBOL = "@@";
 const PLUGIN_PROPS_TO_REMOVE_FROM_CS = [
   "description",
   "homophones",
@@ -184,6 +194,39 @@ function removeLanguageCodes(pluginId, code: string): string {
   return code;
 }
 
+/**
+ * Currently broken?
+ *
+ * https://github.com/swc-project/swc/discussions/1563
+ *
+ *  visitModule(m: Module): Module {
+ *  m.body = this.visitModuleItems(m.body);
+ *  return m;
+ *}
+ */
+class FnReplacer extends Visitor {
+  visitCallExpression(c: CallExpression): Expression {
+    const stmt: ExpressionStatement = {
+      span: c.span,
+      type: "ExpressionStatement",
+      expression: c,
+    };
+    const script: Script = {
+      type: "Script",
+      body: [stmt],
+      span: c.span,
+      interpreter: "",
+    };
+    const strLit: StringLiteral = {
+      type: "StringLiteral",
+      span: c.span,
+      value: `${REPLACED_FN_SYMBOL}${printSync(script).code.substr(3)}`,
+      has_escape: false,
+    };
+    return strLit;
+  }
+}
+
 export async function makePlugin(
   pluginId: string,
   pluginWLanguageFiles: string[],
@@ -218,7 +261,7 @@ export async function makePlugin(
       bundle: true,
       incremental: true,
     });
-    let resolvedPluginCode = buildRes.outputFiles[0].text;
+    let resolvedPluginCode = <string>buildRes.outputFiles[0].text;
 
     resolvedPluginCode = resolvedPluginCode.replace(
       "...PluginBase",
@@ -242,6 +285,11 @@ export async function makePlugin(
       pluginId,
       resolvedPluginCode
     );
+
+    // currently broken
+    // resolvedPluginCode = transformSync(resolvedPluginCode, {
+    //   plugin: (m) => new FnReplacer().visitProgram(m),
+    // });
 
     let i = 0;
     let parsedPluginObj: IPlugin;
@@ -414,6 +462,8 @@ function uneval(l: any): string {
         .join(",")}}`;
     // instanceof String doesn't work
     case typeof l === "string":
+      if (l.startsWith(REPLACED_FN_SYMBOL))
+        return `${l.substr(REPLACED_FN_SYMBOL.length)}`;
       return `"${l.replace(/"/g, '\\"')}"`;
     default:
       return l;
