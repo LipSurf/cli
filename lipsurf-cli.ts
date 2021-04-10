@@ -49,6 +49,24 @@ function versionConvertDots(v) {
   return v.replace(/\./g, "-");
 }
 
+/**
+ * How this works:
+ *   1. Compile TS
+ *   2. Bundle with esbuild (pull imports into same file)
+ *   3. Replace called fns with a special string (using SWC parser)
+ *   4. Evaluate the JS (using Node.js VM module)
+ *   5. Transform the Plugin object to create 7 different parts:
+ *       * backend plugin (no changes currently, but in the future should remove things like tests in the prod build)
+ *       * matching content script (for each plan - 0, 10, 20)
+ *       * non-matching content script (for each plan)
+ *   6. Uneval the js object (make into source code again)
+ *   7. Replace the previous Plugin object with the new one in the bundled source
+ *   8. Remove extraneous code like Plugin.languages
+ *   9. Build each part with esbuild again to treeshake and minify
+ *
+ * @param options
+ * @param plugins
+ */
 async function build(options, plugins?) {
   if (typeof plugins === "undefined") plugins = [];
   let pluginIds = <string[]>[].concat(plugins);
