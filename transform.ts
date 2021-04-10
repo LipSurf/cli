@@ -6,6 +6,17 @@
  * because manipulating the js object is much more straightforward, less tedious
  * and less error prone.
  *
+ * Using a parser like SWC is tedious and error prone because depending on the format
+ * of the output, many cases would need to be handled. E.g. consider the various ways
+ * that the various syntax that can be used to export the default module:
+ *
+ * export default Plugin;
+ * export {
+ *   Plugin as default
+ * }
+ * export default { ... }
+ *
+ *
  * For frontend:
  *    * remove homophones, contexts, settings and other props only needed on the backend
  *    * remove command properties such as match, description, fn, test, delay etc.
