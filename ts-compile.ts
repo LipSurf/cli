@@ -10,6 +10,7 @@ import {
   readConfigFile,
   getPreEmitDiagnostics,
   parseJsonConfigFileContent,
+  createBuilderStatusReporter,
 } from "typescript";
 
 const configPath = findConfigFile(
@@ -70,7 +71,8 @@ const formatHost = {
   getNewLine: () => sys.newLine,
 };
 
-function watchTs() {
+// TODO: this might have room for perf. improvement with incremental building
+export function watch(fileNames: string[], cb?: () => void) {
   if (!configPath) {
     throw new Error('Could not find a valid "tsconfig.json".');
   }
@@ -107,14 +109,20 @@ function watchTs() {
   // doesn't use `this` at all.
   const origCreateProgram = host.createProgram;
   host.createProgram = (rootNames, options, host, oldProgram) => {
-    console.log("Compiling changed typescript...");
-    return origCreateProgram(rootNames, options, host, oldProgram);
+    console.log("Compiling changed typescript...", rootNames);
+    return origCreateProgram(
+      fileNames,
+      { ...options, rootDir: "src" },
+      host,
+      oldProgram
+    );
   };
   const origPostProgramCreate = host.afterProgramCreate;
 
   host.afterProgramCreate = (program) => {
-    console.log("Done compiling changed typescript.");
     origPostProgramCreate!(program);
+    console.log("Done compiling changed typescript.");
+    if (cb) cb();
   };
 
   // `createWatchProgram` creates an initial program, watches files, and updates
