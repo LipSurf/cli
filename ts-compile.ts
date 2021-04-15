@@ -109,7 +109,6 @@ export function watch(fileNames: string[], cb?: () => void) {
   // doesn't use `this` at all.
   const origCreateProgram = host.createProgram;
   host.createProgram = (rootNames, options, host, oldProgram) => {
-    console.log("Compiling changed typescript...", rootNames);
     return origCreateProgram(
       fileNames,
       { ...options, rootDir: "src" },

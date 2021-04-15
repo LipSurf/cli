@@ -33,11 +33,19 @@ import { evalPlugin } from "./evaluator";
 import { keyBy, mapValues, omit } from "lodash";
 import {
   Expression,
+  Compiler,
+  Swcrc,
   StringLiteral,
   ExpressionStatement,
   CallExpression,
+  Module,
   Script,
   printSync,
+  transformSync,
+  parse,
+  ModuleItem,
+  Span,
+  parseSync,
 } from "@swc/core";
 import Visitor from "@swc/core/Visitor";
 import clone from "clone";
@@ -176,33 +184,35 @@ function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
   return plugin;
 }
 
-// https://codereview.stackexchange.com/questions/179471/find-the-corresponding-closing-parenthesis
-function findClosingBrace(str: string, startPos) {
-  const rExp = /\{|\}/g;
-  rExp.lastIndex = startPos + 1;
-  var deep = 1;
-  while ((startPos = rExp.exec(str))) {
-    if (!(deep += str[startPos.index] === "{" ? 1 : -1)) {
-      return startPos.index;
-    }
+function replaceSpans(code: string, replacement: string, ...spans: Span[]) {
+  const codeParts: string[] = [];
+  let prevEnd = 0;
+  let i = 0;
+  for (; i < spans.length; i++) {
+    // console.log("replacing span", code.substring(spans[i].start, spans[i].end));
+    codeParts.push(code.substring(prevEnd, spans[i].start));
+    prevEnd = spans[i].end;
   }
+  codeParts.push(code.substring(prevEnd));
+  return codeParts.join("");
 }
 
-function removeLanguageCodes(pluginId, code: string): string {
-  let res = code;
-  const regx = new RegExp(`${pluginId}_default\.languages\..{2} = {`);
-  let regxRes: RegExpExecArray | null;
-  let codeResOffset = 0;
-  do {
-    regxRes = regx.exec(res);
-    if (regxRes) {
-      const startBraceI = regxRes.index + regxRes[0].length;
-      res = res.substr(findClosingBrace(res, startBraceI) + 1);
-      code = `${code.substr(0, codeResOffset + regxRes.index)}${res}`;
-      codeResOffset += regxRes.index;
-    }
-  } while (regxRes);
-  return code;
+function getLanguageDefSpans(pluginId: string, body: ModuleItem[]): Span[] {
+  return body
+    .filter(
+      (x) =>
+        x.type === "ExpressionStatement" &&
+        x.expression &&
+        x.expression.type === "AssignmentExpression" &&
+        x.expression.left &&
+        x.expression.left.type === "MemberExpression" &&
+        x.expression.left.object.type === "MemberExpression" &&
+        x.expression.left.object.object.type === "Identifier" &&
+        x.expression.left.object.object.value === `${pluginId}_default` &&
+        x.expression.left.property.type === "Identifier" &&
+        x.expression.left.property.value.length === 2
+    )
+    .map((x) => x.span);
 }
 
 /**
@@ -216,26 +226,40 @@ function removeLanguageCodes(pluginId, code: string): string {
  *}
  */
 class FnReplacer extends Visitor {
-  visitCallExpression(c: CallExpression): Expression {
-    const stmt: ExpressionStatement = {
-      span: c.span,
-      type: "ExpressionStatement",
-      expression: c,
-    };
-    const script: Script = {
-      type: "Script",
-      body: [stmt],
-      span: c.span,
-      interpreter: "",
-    };
-    const strLit: StringLiteral = {
-      type: "StringLiteral",
-      span: c.span,
-      value: `${REPLACED_FN_SYMBOL}${printSync(script).code.substr(3)}`,
-      has_escape: false,
-    };
-    return strLit;
-  }
+  // TODO: not working yet, but we need to replace function calls with strings
+  // visitCallExpression(c: CallExpression): Expression {
+  //   const stmt: ExpressionStatement = {
+  //     span: c.span,
+  //     type: "ExpressionStatement",
+  //     expression: c,
+  //   };
+  //   const script: Script = {
+  //     type: "Script",
+  //     body: [stmt],
+  //     span: c.span,
+  //     interpreter: "",
+  //   };
+  //   const strLit: StringLiteral = {
+  //     type: "StringLiteral",
+  //     span: c.span,
+  //     value: `${REPLACED_FN_SYMBOL}${printSync(script).code.substr(3)}`,
+  //     has_escape: false,
+  //   };
+  //   return strLit;
+  // }
+}
+
+function getPluginSpan(pluginId: string, body: ModuleItem[]): Span {
+  return body.find(
+    (x) =>
+      x.type === "VariableDeclaration" &&
+      x.declarations[0].type === "VariableDeclarator" &&
+      x.declarations[0].id.type === "Identifier" &&
+      x.declarations[0].id.value === `${pluginId}_default` &&
+      x.declarations[0].init &&
+      x.declarations[0].init.type == "ObjectExpression"
+    // @ts-ignore
+  )!.declarations[0].init.span;
 }
 
 export async function makePlugin(
@@ -243,10 +267,10 @@ export async function makePlugin(
   pluginWLanguageFiles: string[],
   resolveDir: string,
   prod = false,
-  baseImports = true
+  baseImports = true,
+  define = {}
 ): Promise<[pluginForSub: PluginSub, version: string]> {
   let buildRes;
-  let builtPartsPassed: any[] = [];
   try {
     const importPluginDepsCode = [
       ...pluginWLanguageFiles.map((x, i) => {
@@ -257,50 +281,51 @@ export async function makePlugin(
       }),
       `export default plugin;`,
     ].join("\n");
+    const dumbySrcName = `dumby`;
 
     // bundle the deps
     buildRes = await build({
       stdin: {
         contents: importPluginDepsCode,
-        sourcefile: `dumby.js`,
+        sourcefile: `${dumbySrcName}.js`,
         resolveDir,
         loader: "js",
       },
-      charset: "utf8",
+      // charset: "utf8",
       format: "esm",
       write: false,
       bundle: true,
       incremental: true,
+      define,
     });
-    let resolvedPluginCode = <string>buildRes.outputFiles[0].text;
-
-    resolvedPluginCode = resolvedPluginCode.replace(
-      "...PluginBase",
-      "...PluginBase, ...{languages: {}}"
-    );
+    const resolvedPluginCode = <string>buildRes.outputFiles[0].text
+      .replace("...PluginBase", "...PluginBase, ...{languages: {}}")
+      // needed because ES build does not escape unicode characters in regex literals
+      .replace(/[^\x00-\x7F]/g, (x) => `\\u${escape(x).substr(2)}`);
 
     const byPlanAndMatching = {
       [FREE_PLAN]: {},
       [PLUS_PLAN]: {},
       [PREMIUM_PLAN]: {},
     };
-    const searchQ = `var ${pluginId}_default = {`;
-    const pluginSrcReplacementStartI =
-      resolvedPluginCode.search(new RegExp(searchQ)) + searchQ.length;
-    const pluginSrcReplacementEndI = findClosingBrace(
+    const ast = await parse(resolvedPluginCode, {
+      syntax: "ecmascript",
+      dynamicImport: true,
+    });
+
+    const pluginSpan = getPluginSpan(pluginId, ast.body);
+
+    const [pluginSrcReplacementStartI, pluginSrcReplacementEndI] = [
+      pluginSpan.start,
+      pluginSpan.end,
+    ];
+
+    // assume languages come after plugin definition (otherwise pluginSrcReplacementStartI would need to be adjusted)
+    const languageObjsRemovedCode = replaceSpans(
       resolvedPluginCode,
-      pluginSrcReplacementStartI
+      "",
+      ...getLanguageDefSpans(pluginId, ast.body)
     );
-
-    const languageObjsRemovedCode = removeLanguageCodes(
-      pluginId,
-      resolvedPluginCode
-    );
-
-    // currently broken
-    // resolvedPluginCode = transformSync(resolvedPluginCode, {
-    //   plugin: (m) => new FnReplacer().visitProgram(m),
-    // });
 
     let i = 0;
     let parsedPluginObj: IPlugin;
@@ -311,7 +336,7 @@ export async function makePlugin(
     }
     const version = parsedPluginObj.version || "1.0.0";
     const exportRegx = new RegExp(
-      `var\\s*dumby_default\\s*=\\s*${pluginId}_default;\\s*export\\s+{\\s*dumby_default\\s+as\\s+default\\s*};?`
+      `var\\s*${dumbySrcName}_default\\s*=\\s*${pluginId}_default;\\s*export\\s+{\\s*${dumbySrcName}_default\\s+as\\s+default\\s*};?`
     );
 
     let cloned = clone(parsedPluginObj, false);
@@ -325,9 +350,9 @@ export async function makePlugin(
           code = `${languageObjsRemovedCode.substr(
             0,
             pluginSrcReplacementStartI
-          )}...PluginBase, ...${uneval(
+          )}{...PluginBase, ...${uneval(
             makeCS(cloned, plan, type)
-          )}${languageObjsRemovedCode.substr(pluginSrcReplacementEndI)}`;
+          )}}${languageObjsRemovedCode.substr(pluginSrcReplacementEndI)}`;
         } catch (e) {
           if (e instanceof BlankPartError) code = "";
           else throw new Error(`Error transforming ${pluginId}.${plan} ${e}`);
@@ -341,7 +366,7 @@ export async function makePlugin(
          *  default
          */
         if (code && !exportRegx.test(code)) {
-          throw new Error("Could not find the export regx in code");
+          throw new Error(`Could not find the export regx in code.`);
         }
         byPlanAndMatching[plan][type] = code
           ? `allPlugins.${pluginId} = (() => { ${code
@@ -396,17 +421,13 @@ export async function makePlugin(
               minify: prod,
               minifyWhitespace: prod,
               minifySyntax: true,
-              incremental: true,
+              // incremental: true,
               // defaults to esNext (we build to the target with tsc)
               target: "es2019",
+            }).catch((e) => {
+              console.log(`Error building ${i}\n${e}`);
+              throw e;
             })
-              .then((res) => {
-                builtPartsPassed.push(res);
-                return res;
-              })
-              .catch((e) => {
-                throw new Error(`Error building ${i}\n${e}`);
-              })
           : Promise.resolve({ outputFiles: [{ text: "" }] })
       )
     );
@@ -440,9 +461,11 @@ export async function makePlugin(
         );
     }
     return [<PluginSub>finalPluginsTuple, version];
+  } catch (e) {
+    console.error(e);
+    throw e;
   } finally {
     // cleanup
-    builtPartsPassed.map((b) => b?.rebuild?.dispose());
     buildRes.rebuild?.dispose();
   }
 }

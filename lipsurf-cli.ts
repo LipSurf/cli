@@ -1,17 +1,20 @@
 #!/bin/sh
-":"; //# comment; exec /usr/bin/env node --experimental-vm-modules "$0" "$@"
+":"; //# comment; exec /usr/bin/env node --no-warnings --experimental-vm-modules "$0" "$@"
 "use strict";
 // #!/usr/bin/env node
 import program from "commander";
+import { fork } from "child_process";
 import globby from "globby";
-import { PLANS } from "lipsurf-common/cjs/constants";
-import { join } from "path";
+import path from "path";
+import { transform } from "lodash";
+import { getDotEnv, escapeQuotes } from "lipsurf-common/cjs/dev";
 import { promises as fs } from "fs";
 import { execSync } from "child_process";
 import { evalPlugin } from "./evaluator";
 import { compile, watch } from "./ts-compile";
-import { makePlugin } from "./transform";
+import { ChildProcess } from "node:child_process";
 
+const IS_PROD = process.env.NODE_ENV === "production";
 const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
 
 program
@@ -45,49 +48,29 @@ function getAllPluginIds(files: string[]) {
   );
 }
 
-function versionConvertDots(v) {
-  return v.replace(/\./g, "-");
-}
-
-function transformJSToPlugin(
-  pluginIds: string[],
-  globbedTs: string[],
-  outdir: string
-): Promise<void[]> {
-  const p: Promise<void>[] = [];
-  for (const pluginId of pluginIds) {
-    const pluginWLanguageFiles = globbedTs
-      .map((f) => f.replace(/^src\//, "dist/tmp/").replace(/.ts$/, ".js"))
-      .filter((x) => x.substr(x.lastIndexOf("/")).includes(`/${pluginId}.`))
-      .sort((a, b) => a.length - b.length);
-    const resolveDir = pluginWLanguageFiles[0].substr(
-      0,
-      pluginWLanguageFiles[0].lastIndexOf("/")
-    );
-    p.push(
-      makePlugin(
-        pluginId,
-        pluginWLanguageFiles,
-        resolveDir,
-        process.env.NODE_ENV === "production"
-      )
-        .then((res) => {
-          const version = versionConvertDots(res[1]);
-          res[0].forEach((c, i) => {
-            if (c)
-              fs.writeFile(
-                `${join(outdir, pluginId)}.${version}.${PLANS[i]}.ls`,
-                c,
-                "utf8"
-              );
-          });
-        })
-        .catch((e) => {
-          console.error(`Error building ${pluginId}: ${e}`);
-        })
-    );
-  }
-  return Promise.all(p);
+function forkAndTransform(pluginIds: string[], ...args: any[]): Promise<void> {
+  return new Promise((cb) => {
+    let finishedForks = 0;
+    const forks: ChildProcess[] = [];
+    for (let pluginId of pluginIds) {
+      // TODO: don't fork if only 1 plugin
+      // forking done as a workaround for bug in SWC:
+      // https://github.com/swc-project/swc/issues/1366
+      // (but hey, it probably also improves perf)
+      const forked = fork(path.join(__dirname, "./worker.js"));
+      forks.push(forked);
+      forked.once("exit", (code) => {
+        finishedForks++;
+      });
+      forked.send([pluginId, ...args]);
+    }
+    const checkIfDone = setInterval(() => {
+      if (finishedForks >= forks.length) {
+        clearInterval(checkIfDone);
+        cb();
+      }
+    }, 20);
+  });
 }
 
 /**
@@ -108,31 +91,57 @@ function transformJSToPlugin(
  * @param options
  * @param plugins
  */
-async function build(options, plugins?) {
-  if (typeof plugins === "undefined") plugins = [];
-  let pluginIds = <string[]>[].concat(plugins);
+async function build(options, plugins = "") {
   const timeStart = new Date();
   let globbedTs: string[];
-  if (!pluginIds.length) {
+  let pluginIds;
+  if (!plugins.length) {
     globbedTs = globby.sync(["src/*/*.ts", "!src/@types"]);
     pluginIds = getAllPluginIds(globbedTs);
   } else {
+    pluginIds = (<string[]>[]).concat(plugins.split(","));
     globbedTs = globby.sync(pluginIds.map((p) => `src/${p}/*.ts`));
   }
   console.log("Building plugins:", pluginIds);
 
+  let envVars = {};
+  const envFile = IS_PROD ? ".env" : ".env.development";
+  try {
+    envVars = getDotEnv(path.join(envFile));
+  } catch (e) {
+    console.warn(`No "${envFile}" file found.`);
+  }
+  const define = transform(
+    { NODE_ENV: IS_PROD ? "production" : "development", ...envVars },
+    (r, val, key) => (r[`process.env.${key}`] = `"${escapeQuotes(val)}"`)
+  );
+
   if (options.watch) {
-    watch(globbedTs, () => {
+    watch(globbedTs, async () => {
       console.log("Starting transform...");
-      transformJSToPlugin(pluginIds, globbedTs, options.outDir);
+      await forkAndTransform(
+        pluginIds,
+        globbedTs,
+        options.outDir,
+        options.baseImports,
+        define
+      );
       console.log("Done transforming.");
     });
   } else {
     await compile(globbedTs);
-    transformJSToPlugin(pluginIds, globbedTs, options.outDir);
-    let timeEnd = new Date();
+    await forkAndTransform(
+      pluginIds,
+      globbedTs,
+      options.outDir,
+      options.baseImports,
+      define
+    );
+    const timeEnd = new Date();
     console.log(
-      `Done building in ${Math.round((+timeEnd! - +timeStart) / 1000)} seconds.`
+      `Done building in ${((+timeEnd! - +timeStart) / 1000).toFixed(
+        2
+      )} seconds.`
     );
   }
 }
