@@ -11,6 +11,7 @@ import { getDotEnv, escapeQuotes } from "lipsurf-common/cjs/dev";
 import { promises as fs } from "fs";
 import { execSync } from "child_process";
 import { evalPlugin } from "./evaluator";
+import { transformJSToPlugin } from "./transform";
 import { compile, watch } from "./ts-compile";
 import { ChildProcess } from "node:child_process";
 
@@ -50,26 +51,30 @@ function getAllPluginIds(files: string[]) {
 
 function forkAndTransform(pluginIds: string[], ...args: any[]): Promise<void> {
   return new Promise((cb) => {
-    let finishedForks = 0;
-    const forks: ChildProcess[] = [];
-    for (let pluginId of pluginIds) {
-      // TODO: don't fork if only 1 plugin
-      // forking done as a workaround for bug in SWC:
-      // https://github.com/swc-project/swc/issues/1366
-      // (but hey, it probably also improves perf)
-      const forked = fork(path.join(__dirname, "./worker.js"));
-      forks.push(forked);
-      forked.once("exit", (code) => {
-        finishedForks++;
-      });
-      forked.send([pluginId, ...args]);
-    }
-    const checkIfDone = setInterval(() => {
-      if (finishedForks >= forks.length) {
-        clearInterval(checkIfDone);
-        cb();
+    if (pluginIds.length === 1) {
+      // @ts-ignore
+      transformJSToPlugin(pluginIds[0], ...args).finally(cb);
+    } else {
+      let finishedForks = 0;
+      const forks: ChildProcess[] = [];
+      for (let pluginId of pluginIds) {
+        // forking done as a workaround for bug in SWC:
+        // https://github.com/swc-project/swc/issues/1366
+        // (but hey, it probably also improves perf)
+        const forked = fork(path.join(__dirname, "./worker.js"));
+        forks.push(forked);
+        forked.once("exit", (code) => {
+          finishedForks++;
+        });
+        forked.send([pluginId, ...args]);
       }
-    }, 20);
+      const checkIfDone = setInterval(() => {
+        if (finishedForks >= forks.length) {
+          clearInterval(checkIfDone);
+          cb();
+        }
+      }, 20);
+    }
   });
 }
 

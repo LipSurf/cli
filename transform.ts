@@ -31,6 +31,9 @@ import { build } from "esbuild";
 import { PluginPartType } from "./util";
 import { evalPlugin } from "./evaluator";
 import { keyBy, mapValues, omit } from "lodash";
+import { join } from "path";
+import { promises as fs } from "fs";
+import { escapeQuotes } from "lipsurf-common/cjs/dev";
 import {
   Expression,
   Compiler,
@@ -184,14 +187,22 @@ function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
   return plugin;
 }
 
-function replaceSpans(code: string, replacement: string, ...spans: Span[]) {
+function replaceSpans(
+  code: string,
+  spans: Span[],
+  replacer?: (s: string) => string
+) {
   const codeParts: string[] = [];
   let prevEnd = 0;
   let i = 0;
   for (; i < spans.length; i++) {
+    const curSpan = spans[i];
     // console.log("replacing span", code.substring(spans[i].start, spans[i].end));
-    codeParts.push(code.substring(prevEnd, spans[i].start));
-    prevEnd = spans[i].end;
+    codeParts.push(code.substring(prevEnd, curSpan.start));
+    if (replacer) {
+      codeParts.push(replacer(code.substring(curSpan.start, curSpan.end)));
+    }
+    prevEnd = curSpan.end;
   }
   codeParts.push(code.substring(prevEnd));
   return codeParts.join("");
@@ -226,27 +237,15 @@ function getLanguageDefSpans(pluginId: string, body: ModuleItem[]): Span[] {
  *}
  */
 class FnReplacer extends Visitor {
-  // TODO: not working yet, but we need to replace function calls with strings
-  // visitCallExpression(c: CallExpression): Expression {
-  //   const stmt: ExpressionStatement = {
-  //     span: c.span,
-  //     type: "ExpressionStatement",
-  //     expression: c,
-  //   };
-  //   const script: Script = {
-  //     type: "Script",
-  //     body: [stmt],
-  //     span: c.span,
-  //     interpreter: "",
-  //   };
-  //   const strLit: StringLiteral = {
-  //     type: "StringLiteral",
-  //     span: c.span,
-  //     value: `${REPLACED_FN_SYMBOL}${printSync(script).code.substr(3)}`,
-  //     has_escape: false,
-  //   };
-  //   return strLit;
-  // }
+  public callExpressionSpans: Span[] = [];
+  constructor() {
+    super();
+  }
+
+  visitCallExpression(c: CallExpression) {
+    this.callExpressionSpans.push(c.span);
+    return c;
+  }
 }
 
 function getPluginSpan(pluginId: string, body: ModuleItem[]): Span {
@@ -262,7 +261,54 @@ function getPluginSpan(pluginId: string, body: ModuleItem[]): Span {
   )!.declarations[0].init.span;
 }
 
-export async function makePlugin(
+function versionConvertDots(v) {
+  return v.replace(/\./g, "-");
+}
+
+export function transformJSToPlugin(
+  pluginId: string,
+  globbedTs: string[],
+  outdir: string,
+  baseImports: boolean,
+  define: {}
+) {
+  const pluginWLanguageFiles = globbedTs
+    .map((f) => f.replace(/^src\//, "dist/tmp/").replace(/.ts$/, ".js"))
+    .filter((x) => x.substr(x.lastIndexOf("/")).includes(`/${pluginId}.`))
+    .sort((a, b) => a.length - b.length);
+  const resolveDir = pluginWLanguageFiles[0].substr(
+    0,
+    pluginWLanguageFiles[0].lastIndexOf("/")
+  );
+  return makePlugin(
+    pluginId,
+    pluginWLanguageFiles,
+    resolveDir,
+    process.env.NODE_ENV === "production",
+    baseImports,
+    define
+  )
+    .then((res) => {
+      const version = versionConvertDots(res[1]);
+      return Promise.all(
+        res[0]
+          .filter((c) => c)
+          .map((c, i) =>
+            fs.writeFile(
+              `${join(outdir, pluginId)}.${version}.${PLANS[i]}.ls`,
+              c,
+              "utf8"
+            )
+          )
+      );
+    })
+    .catch((e) => {
+      console.error(`Error building ${pluginId}: ${e}`);
+      throw e;
+    });
+}
+
+async function makePlugin(
   pluginId: string,
   pluginWLanguageFiles: string[],
   resolveDir: string,
@@ -313,24 +359,36 @@ export async function makePlugin(
       dynamicImport: true,
     });
 
-    const pluginSpan = getPluginSpan(pluginId, ast.body);
-
-    const [pluginSrcReplacementStartI, pluginSrcReplacementEndI] = [
-      pluginSpan.start,
-      pluginSpan.end,
-    ];
+    const {
+      start: pluginSrcReplacementStartI,
+      end: pluginSrcReplacementEndI,
+    } = getPluginSpan(pluginId, ast.body);
 
     // assume languages come after plugin definition (otherwise pluginSrcReplacementStartI would need to be adjusted)
     const languageObjsRemovedCode = replaceSpans(
       resolvedPluginCode,
-      "",
-      ...getLanguageDefSpans(pluginId, ast.body)
+      getLanguageDefSpans(pluginId, ast.body)
     );
+
+    const noFnCallsCode = resolvedPluginCode;
+    // currently broken because of missing call expressions
+    // console.time("escape fn calls");
+    // debugger;
+    // const fnReplacer = new FnReplacer();
+    // fnReplacer.visitProgram(ast);
+    // const noFnCallsCode = replaceSpans(
+    //   resolvedPluginCode,
+    //   fnReplacer.callExpressionSpans,
+    //   (code) => `"${escapeQuotes(code)}"`
+    // );
+    // console.log(noFnCallsCode);
+    // console.timeEnd("escape fn calls");
+    // throw "done";
 
     let i = 0;
     let parsedPluginObj: IPlugin;
     try {
-      parsedPluginObj = await evalPlugin(resolvedPluginCode);
+      parsedPluginObj = await evalPlugin(noFnCallsCode);
     } catch (e) {
       throw new Error(`Error evaluating ${e}`);
     }
