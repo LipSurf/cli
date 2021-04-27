@@ -7,7 +7,7 @@ import { fork } from "child_process";
 import globby from "globby";
 import path from "path";
 import { transform } from "lodash";
-import { getDotEnv, escapeQuotes } from "lipsurf-common/cjs/dev";
+import { getDotEnv, escapeQuotes } from "lipsurf-common/dev.cjs";
 import { promises as fs } from "fs";
 import { execSync } from "child_process";
 import { evalPlugin } from "./evaluator";

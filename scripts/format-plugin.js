@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const beautify = require("js-beautify").js;
-const { PLUGIN_SPLIT_SEQ } = require("lipsurf-common/cjs/constants");
+const { PLUGIN_SPLIT_SEQ } = require("lipsurf-common/constants.cjs");
 const fs = require("fs");
 
 for (const name of process.argv.slice(2)) {

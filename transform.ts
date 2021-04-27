@@ -33,7 +33,7 @@ import { evalPlugin } from "./evaluator";
 import { keyBy, mapValues, omit } from "lodash";
 import { join } from "path";
 import { promises as fs } from "fs";
-import { escapeQuotes } from "lipsurf-common/cjs/dev";
+import { escapeQuotes } from "lipsurf-common/dev.cjs";
 import {
   Expression,
   Compiler,
@@ -59,7 +59,7 @@ import {
   FREE_PLAN,
   PLUS_PLAN,
   PREMIUM_PLAN,
-} from "lipsurf-common/cjs/constants";
+} from "lipsurf-common/constants.cjs";
 const REPLACED_FN_SYMBOL = "@@";
 const PLUGIN_PROPS_TO_REMOVE_FROM_CS = [
   "description",
