@@ -292,15 +292,15 @@ export function transformJSToPlugin(
     .then((res) => {
       const version = versionConvertDots(res[1]);
       return Promise.all(
-        res[0]
-          .filter((c) => c)
-          .map((c, i) =>
-            fs.writeFile(
-              `${join(outdir, pluginId)}.${version}.${PLANS[i]}.ls`,
-              c,
-              "utf8"
-            )
-          )
+        res[0].map((c, i) =>
+          c
+            ? fs.writeFile(
+                `${join(outdir, pluginId)}.${version}.${PLANS[i]}.ls`,
+                c,
+                "utf8"
+              )
+            : undefined
+        )
       );
     })
     .catch((e) => {
