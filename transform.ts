@@ -16,6 +16,11 @@
  * }
  * export default { ... }
  *
+ * Before we eval the plugin, we replace all fn calls with:
+ *   (specialVarName = () => {/* ...fn call... * /})
+ *
+ * Tried making it a string, but ran into unicode escaping issues.
+ * A comment in a function can still be extracted with .toString()
  *
  * For frontend:
  *    * remove homophones, contexts, settings and other props only needed on the backend
@@ -33,22 +38,13 @@ import { evalPlugin } from "./evaluator";
 import { keyBy, mapValues, omit } from "lodash";
 import { join } from "path";
 import { promises as fs } from "fs";
-import { escapeQuotes } from "lipsurf-common/dev.cjs";
 import {
-  Expression,
-  Compiler,
-  Swcrc,
-  StringLiteral,
-  ExpressionStatement,
   CallExpression,
-  Module,
-  Script,
-  printSync,
-  transformSync,
   parse,
   ModuleItem,
   Span,
-  parseSync,
+  Property,
+  SpreadElement,
 } from "@swc/core";
 import Visitor from "@swc/core/Visitor";
 import clone from "clone";
@@ -60,7 +56,7 @@ import {
   PLUS_PLAN,
   PREMIUM_PLAN,
 } from "lipsurf-common/constants.cjs";
-const REPLACED_FN_SYMBOL = "@@";
+import { escapeRegx } from "lipsurf-common/util.cjs";
 const PLUGIN_PROPS_TO_REMOVE_FROM_CS = [
   "description",
   "homophones",
@@ -100,6 +96,15 @@ const PLUGIN_BASE_PROPS = [
 
 const importPluginBase = `import PluginBase from 'chrome-extension://${EXT_ID}/dist/modules/plugin-base.js';`;
 const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://${EXT_ID}/dist/modules/extension-util.js';`;
+const FN_ESCAPE_TAG = `LIPSURF_FN_ESC`;
+const COMMENT_ENDER_PLACEHOLDER = "LIPSURF_CMT_ENDER";
+const COMMENT_ENDER_PLACEHOLDER_REGX = new RegExp(
+  COMMENT_ENDER_PLACEHOLDER,
+  "g"
+);
+const COMMENT_ENDER_REGX = new RegExp("\\*/", "g");
+const FN_ESCAPE_PREFIX = `=()=>{/*`;
+const FN_ESCAPE_SUFFIX = `*/})`;
 
 class BlankPartError extends Error {}
 
@@ -227,22 +232,18 @@ function getLanguageDefSpans(pluginId: string, body: ModuleItem[]): Span[] {
 }
 
 /**
- * Currently broken?
- *
- * https://github.com/swc-project/swc/discussions/1563
- *
- *  visitModule(m: Module): Module {
- *  m.body = this.visitModuleItems(m.body);
- *  return m;
- *}
+ * replace all called fns with strings, so that they
+ * aren't resolved in the wrong context (when plugin
+ * is building)
+ * Important so that closures are preserved (eg. when
+ * pageFn is a called fn with closure vars)
  */
 class FnReplacer extends Visitor {
   public callExpressionSpans: Span[] = [];
-  constructor() {
-    super();
-  }
 
   visitCallExpression(c: CallExpression) {
+    // console.log(c);
+    // return c;
     this.callExpressionSpans.push(c.span);
     return c;
   }
@@ -308,6 +309,19 @@ export function transformJSToPlugin(
     });
 }
 
+// "s" flag is so dot can match newlines as well
+const ARTIFACT_REGX = new RegExp(
+  `\\(${FN_ESCAPE_TAG}${escapeRegx(FN_ESCAPE_PREFIX)}(.*?)${escapeRegx(
+    FN_ESCAPE_SUFFIX
+  )}`,
+  "gs"
+);
+function removeReplacedCallArtifacts(s: string): string {
+  return s
+    .replace(ARTIFACT_REGX, "$1")
+    .replace(COMMENT_ENDER_PLACEHOLDER_REGX, "*/");
+}
+
 async function makePlugin(
   pluginId: string,
   pluginWLanguageFiles: string[],
@@ -354,6 +368,18 @@ async function makePlugin(
       [PLUS_PLAN]: {},
       [PREMIUM_PLAN]: {},
     };
+
+    // the fn still not recognized (up to current swc version)
+    // const resolvedPluginCode = `
+    //   function fn() { }
+    //   export default {
+    //     commands: [
+    //       {
+    //         abc: fn(),
+    //       }
+    //     ]
+    //   };
+    // `;
     const ast = await parse(resolvedPluginCode, {
       syntax: "ecmascript",
       dynamicImport: true,
@@ -370,34 +396,36 @@ async function makePlugin(
       getLanguageDefSpans(pluginId, ast.body)
     );
 
-    const noFnCallsCode = resolvedPluginCode;
-    // currently broken because of missing call expressions
     // console.time("escape fn calls");
-    // debugger;
-    // const fnReplacer = new FnReplacer();
-    // fnReplacer.visitProgram(ast);
-    // const noFnCallsCode = replaceSpans(
-    //   resolvedPluginCode,
-    //   fnReplacer.callExpressionSpans,
-    //   (code) => `"${escapeQuotes(code)}"`
-    // );
+    const fnReplacer = new FnReplacer();
+    fnReplacer.visitProgram(ast);
+    const noFnCallsCode = replaceSpans(
+      resolvedPluginCode,
+      fnReplacer.callExpressionSpans,
+      (code) =>
+        `(${FN_ESCAPE_TAG}${FN_ESCAPE_PREFIX}${code.replace(
+          COMMENT_ENDER_REGX,
+          COMMENT_ENDER_PLACEHOLDER
+        )}${FN_ESCAPE_SUFFIX}`
+    );
     // console.log(noFnCallsCode);
     // console.timeEnd("escape fn calls");
-    // throw "done";
 
     let i = 0;
     let parsedPluginObj: IPlugin;
     try {
-      parsedPluginObj = await evalPlugin(noFnCallsCode);
+      parsedPluginObj = await evalPlugin(
+        `var ${FN_ESCAPE_TAG};${noFnCallsCode}`
+      );
     } catch (e) {
-      throw new Error(`Error evaluating ${e}`);
+      throw new Error(`Error evaluating ${e}\n\ncode: ${noFnCallsCode}`);
     }
     const version = parsedPluginObj.version || "1.0.0";
     const exportRegx = new RegExp(
       `var\\s*${dumbySrcName}_default\\s*=\\s*${pluginId}_default;\\s*export\\s+{\\s*${dumbySrcName}_default\\s+as\\s+default\\s*};?`
     );
 
-    let cloned = clone(parsedPluginObj, false);
+    let cloned: IPlugin = clone(parsedPluginObj, false);
     for (const plan of PLANS) {
       let type: PluginPartType;
       for (type of Object.values<PluginPartType>(<any>PluginPartType).filter(
@@ -408,8 +436,8 @@ async function makePlugin(
           code = `${languageObjsRemovedCode.substr(
             0,
             pluginSrcReplacementStartI
-          )}{...PluginBase, ...${uneval(
-            makeCS(cloned, plan, type)
+          )}{...PluginBase, ...${removeReplacedCallArtifacts(
+            uneval(makeCS(cloned, plan, type))
           )}}${languageObjsRemovedCode.substr(pluginSrcReplacementEndI)}`;
         } catch (e) {
           if (e instanceof BlankPartError) code = "";
@@ -507,6 +535,7 @@ async function makePlugin(
       );
       if (
         PLANS[i] !== FREE_PLAN &&
+        // @ts-ignore
         matchingNonMatching.reduce((memo, x) => memo + x.length, 0) === 0
       )
         // no plugin for this level
@@ -554,8 +583,6 @@ function uneval(l: any): string {
         .join(",")}}`;
     // instanceof String doesn't work
     case typeof l === "string":
-      if (l.startsWith(REPLACED_FN_SYMBOL))
-        return `${l.substr(REPLACED_FN_SYMBOL.length)}`;
       return `"${l.replace(/"/g, '\\"')}"`;
     default:
       return l;

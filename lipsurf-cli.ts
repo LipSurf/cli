@@ -1,6 +1,5 @@
 #!/bin/sh
 ":"; //# comment; exec /usr/bin/env node --no-warnings --experimental-vm-modules "$0" "$@"
-"use strict";
 // #!/usr/bin/env node
 import program from "commander";
 import { fork } from "child_process";

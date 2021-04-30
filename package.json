@@ -5,11 +5,12 @@
     "lipsurf-cli": "./lib/lipsurf-cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json -w"
   },
   "author": "Miko Borys",
   "dependencies": {
-    "@swc/core": "^1.2.52",
+    "@swc/core": "^1.2.54",
     "clone": "^2.1.2",
     "commander": "^4.1.1",
     "esbuild": "^0.11.5",
