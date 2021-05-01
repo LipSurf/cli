@@ -7,12 +7,14 @@ import globby from "globby";
 import path from "path";
 import { transform } from "lodash";
 import { getDotEnv, escapeQuotes } from "lipsurf-common/dev.cjs";
-import { promises as fs } from "fs";
+import fs from "fs-extra";
 import { execSync } from "child_process";
 import { evalPlugin } from "./evaluator";
 import { transformJSToPlugin } from "./transform";
 import { compile, watch } from "./ts-compile";
 import { ChildProcess } from "node:child_process";
+import { transformFile } from "@swc/core";
+import chokidar from "chokidar";
 
 const IS_PROD = process.env.NODE_ENV === "production";
 const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
@@ -25,6 +27,7 @@ program
   .command("build [...PLUGINS]")
   .description("build lipsurf plugins")
   .option("-w, --watch")
+  .option("-t, --check", "check types")
   .option("--no-base-imports")
   .action((plugins, cmdObj) => build({ ...cmdObj, ...cmdObj.parent }, plugins));
 
@@ -100,7 +103,7 @@ async function build(options, plugins = "") {
   let globbedTs: string[];
   let pluginIds;
   if (!plugins.length) {
-    globbedTs = globby.sync(["src/*/*.ts", "!src/@types"]);
+    globbedTs = globby.sync(["src/**/*.ts", "!src/@types"]);
     pluginIds = getAllPluginIds(globbedTs);
   } else {
     pluginIds = (<string[]>[]).concat(plugins.split(","));
@@ -121,19 +124,43 @@ async function build(options, plugins = "") {
   );
 
   if (options.watch) {
-    watch(globbedTs, async () => {
-      console.log("Starting transform...");
-      await forkAndTransform(
-        pluginIds,
-        globbedTs,
-        options.outDir,
-        options.baseImports,
-        define
-      );
-      console.log("Done transforming.");
-    });
+    if (options.check) {
+      watch(globbedTs, async () => {
+        console.log("Starting transform...");
+        await forkAndTransform(
+          pluginIds,
+          globbedTs,
+          options.outDir,
+          options.baseImports,
+          define
+        );
+        console.log("Done transforming.");
+      });
+    } else {
+      let queued = false;
+      chokidar.watch("src").on("all", async (event, path) => {
+        if (!queued) {
+          queued = true;
+          // just do all of them
+          await transpileFiles(globbedTs);
+          console.log("Starting transform...");
+          await forkAndTransform(
+            pluginIds,
+            globbedTs,
+            options.outDir,
+            options.baseImports,
+            define
+          );
+          console.log("Done transforming.");
+          queued = false;
+        }
+      });
+    }
   } else {
-    await compile(globbedTs);
+    if (options.check) await compile(globbedTs);
+    else {
+      await transpileFiles(globbedTs);
+    }
     await forkAndTransform(
       pluginIds,
       globbedTs,
@@ -148,6 +175,31 @@ async function build(options, plugins = "") {
       )} seconds.`
     );
   }
+}
+
+async function transpileFiles(globbedTs: string[]) {
+  await Promise.all(
+    globbedTs.map((f) =>
+      transformFile(f, {
+        jsc: {
+          parser: {
+            syntax: "typescript",
+            dynamicImport: true,
+          },
+          target: "es2020",
+          // externalHelpers: true,
+        },
+      }).then(async (t) => {
+        const splitted = f.split(/\.ts|\//g);
+        let dir;
+        if (splitted.length > 3)
+          dir = `dist/tmp/${splitted[splitted.length - 3]}`;
+        else dir = "dist/tmp";
+        const outputF = `${dir}/${splitted[splitted.length - 2]}.js`;
+        return fs.writeFile(outputF, t.code);
+      })
+    )
+  );
 }
 
 async function upVersion(options) {
