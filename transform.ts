@@ -102,7 +102,7 @@ const COMMENT_ENDER_PLACEHOLDER_REGX = new RegExp(
   COMMENT_ENDER_PLACEHOLDER,
   "g"
 );
-const COMMENT_ENDER_REGX = new RegExp("\\*/", "g");
+const COMMENT_ENDER_REGEX = new RegExp("\\*/", "g");
 const FN_ESCAPE_PREFIX = `=()=>{/*`;
 const FN_ESCAPE_SUFFIX = `*/})`;
 
@@ -404,7 +404,7 @@ async function makePlugin(
       fnReplacer.callExpressionSpans,
       (code) =>
         `(${FN_ESCAPE_TAG}${FN_ESCAPE_PREFIX}${code.replace(
-          COMMENT_ENDER_REGX,
+          COMMENT_ENDER_REGEX,
           COMMENT_ENDER_PLACEHOLDER
         )}${FN_ESCAPE_SUFFIX}`
     );
@@ -452,7 +452,7 @@ async function makePlugin(
          *  default
          */
         if (code && !exportRegx.test(code)) {
-          throw new Error(`Could not find the export regx in code.`);
+          throw new Error(`Could not find the export regex in code.`);
         }
         byPlanAndMatching[plan][type] = code
           ? `allPlugins.${pluginId} = (() => { ${code

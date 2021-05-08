@@ -45,8 +45,8 @@ function getAllPluginIds(files: string[]) {
     new Set(
       files
         .map((filePath) => FOLDER_REGX.exec(filePath))
-        .filter((regxRes) => regxRes && regxRes[1] === regxRes[2])
-        .map((regxRes) => regxRes![1])
+        .filter((regexRes) => regexRes && regexRes[1] === regexRes[2])
+        .map((regexRes) => regexRes![1])
     )
   );
 }
