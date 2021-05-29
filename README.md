@@ -22,10 +22,11 @@ EXAMPLE
 	Usage
 	  $ lipsurf-cli build -o/--out-dir [OUTDIR] [...PLUGINS]
 
-	Options
-    --watch
-    --out-dir/-o
-    --no-base-imports
+  Options
+  -w, --watch
+  -t, --check        check types
+  --no-base-imports
+  -h, --help         output usage information
 
 	Examples
 	  $ lipsurf-cli build --watch

@@ -17,6 +17,7 @@ import { transformFile } from "@swc/core";
 import chokidar from "chokidar";
 
 const IS_PROD = process.env.NODE_ENV === "production";
+const TMP_DIR = 'dist/tmp';
 const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
 
 program
@@ -177,8 +178,8 @@ async function build(options, plugins = "") {
   }
 }
 
-async function transpileFiles(globbedTs: string[]) {
-  await Promise.all(
+function transpileFiles(globbedTs: string[]) {
+  return Promise.all(
     globbedTs.map((f) =>
       transformFile(f, {
         jsc: {
@@ -189,14 +190,14 @@ async function transpileFiles(globbedTs: string[]) {
           target: "es2020",
           // externalHelpers: true,
         },
-      }).then(async (t) => {
+      }).then((t) => {
         const splitted = f.split(/\.ts|\//g);
         let dir;
         if (splitted.length > 3)
-          dir = `dist/tmp/${splitted[splitted.length - 3]}`;
-        else dir = "dist/tmp";
+          dir = `${TMP_DIR}/${splitted[splitted.length - 3]}`;
+        else dir = TMP_DIR;
         const outputF = `${dir}/${splitted[splitted.length - 2]}.js`;
-        return fs.writeFile(outputF, t.code);
+        return fs.ensureDir(dir).then(() => fs.writeFile(outputF, t.code));
       })
     )
   );
@@ -233,10 +234,10 @@ async function upVersion(options) {
   const oldVersion = (
     await evalPlugin(
       await fs.readFile(
-        `./dist/tmp/${anyPluginName}}/${anyPluginName}.js`,
+        `./${TMP_DIR}/${anyPluginName}}/${anyPluginName}.js`,
         "utf8"
       ),
-      `./dist/tmp/${anyPluginName}/`
+      `./${TMP_DIR}/${anyPluginName}/`
     )
   ).version!;
   console.log(`latest version of ${anyPluginName}: ${oldVersion}`);
