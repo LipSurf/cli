@@ -10,7 +10,7 @@
   },
   "author": "Miko Borys",
   "dependencies": {
-    "@swc/core": "^1.2.54",
+    "@swc/core": "^1.2.58",
     "chokidar": "^3.5.1",
     "clone": "^2.1.2",
     "commander": "^4.1.1",

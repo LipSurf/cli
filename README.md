@@ -44,9 +44,9 @@ Other stuff:
 * Tree-shakes after removing unnecessary properties
 
 # Debugging
-To debug ParsedPlugin.ts:
+To debug the plugin builder:
 
 1) Go into a project with LipSurf plugins.
 
-2) `$ node --inspect-brk ./node_modules/lipsurf-cli/lipsurf-cli build`
+2) `$ node --inspect-brk --experimental-vm-modules ./node_modules/lipsurf-cli/lipsurf-cli build`
 
