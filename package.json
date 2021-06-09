@@ -5,6 +5,7 @@
     "lipsurf-cli": "./lib/lipsurf-cli.js"
   },
   "scripts": {
+    "clean": "rm -r lib/*",
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json -w"
   },
