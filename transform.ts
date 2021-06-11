@@ -357,6 +357,7 @@ async function makePlugin(
       bundle: true,
       incremental: true,
       define,
+      minifyWhitespace: true,
     });
     const resolvedPluginCode = <string>buildRes.outputFiles[0].text
       .replace("...PluginBase", "...PluginBase, ...{languages: {}}")
@@ -369,7 +370,7 @@ async function makePlugin(
       [PREMIUM_PLAN]: {},
     };
 
-    // the fn still not recognized (up to current swc version)
+    // the fn still not recognized (last checked swc version v1.2.58)
     // const resolvedPluginCode = `
     //   function fn() { }
     //   export default {
@@ -385,10 +386,14 @@ async function makePlugin(
       dynamicImport: true,
     });
 
-    const {
+    let {
       start: pluginSrcReplacementStartI,
       end: pluginSrcReplacementEndI,
     } = getPluginSpan(pluginId, ast.body);
+    
+    // hack to get around span not starting at 0 in swc (last tested in v1.2.60)
+    pluginSrcReplacementEndI = pluginSrcReplacementEndI - ast.span.start;
+    pluginSrcReplacementStartI = pluginSrcReplacementStartI - ast.span.start;
 
     // assume languages come after plugin definition (otherwise pluginSrcReplacementStartI would need to be adjusted)
     const languageObjsRemovedCode = replaceSpans(
@@ -422,7 +427,7 @@ async function makePlugin(
     }
     const version = parsedPluginObj.version || "1.0.0";
     const exportRegx = new RegExp(
-      `var\\s*${dumbySrcName}_default\\s*=\\s*${pluginId}_default;\\s*export\\s+{\\s*${dumbySrcName}_default\\s+as\\s+default\\s*};?`
+      `var\\s*${dumbySrcName}_default\\s*=\\s*${pluginId}_default;\\s*export\\s*{\\s*${dumbySrcName}_default\\s+as\\s+default\\s*};?`
     );
 
     let cloned: IPlugin = clone(parsedPluginObj, false);
