@@ -461,7 +461,7 @@ async function makePlugin(
         }
         byPlanAndMatching[plan][type] = code
           ? `allPlugins.${pluginId} = (() => { ${code
-              .replace(`var ${pluginId}_default =`, "return")
+              .replace(new RegExp(`var ${pluginId}_default\s*=`), "return")
               .replace(exportRegx, "")} })();`
           : "";
         // work with copies
