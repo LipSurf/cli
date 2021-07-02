@@ -234,7 +234,7 @@ async function upVersion(options) {
   const oldVersion = (
     await evalPlugin(
       await fs.readFile(
-        `./${TMP_DIR}/${anyPluginName}}/${anyPluginName}.js`,
+        `./${TMP_DIR}/${anyPluginName}/${anyPluginName}.js`,
         "utf8"
       ),
       `./${TMP_DIR}/${anyPluginName}/`
