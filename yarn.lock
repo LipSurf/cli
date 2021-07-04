@@ -2176,9 +2176,6 @@ lines-and-columns@^1.1.6:
   resolved "https://registry.yarnpkg.com/lines-and-columns/-/lines-and-columns-1.1.6.tgz#1c00c743b433cd0a4e80758f7b64a57440d9ff00"
   integrity sha1-HADHQ7QzzQpOgHWPe2SldEDZ/wA=
 
-lipsurf-common@../common/dist:
-  version "0.0.0"
-
 "lipsurf-types@https://github.com/lipsurf/types":
   version "1.0.1"
   resolved "https://github.com/lipsurf/types#165bfad84bf94d5c1c266c5e2e2b73996285fd74"
