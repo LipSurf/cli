@@ -253,10 +253,18 @@ function getLanguageDefSpans(pluginId: string, body: ModuleItem[]): Span[] {
 class FnReplacer extends Visitor {
   public callExpressionSpans: Span[] = [];
 
+  // hack to get around span not starting at 0 in swc (last tested in v1.2.62)
+  constructor(private offsetHack) {
+    super();
+  }
+
   visitCallExpression(c: CallExpression) {
     // console.log(c);
     // return c;
-    this.callExpressionSpans.push(c.span);
+    // hack to get around span not starting at 0 in swc (last tested in v1.2.62)
+    const start = c.span.start - this.offsetHack;
+    const end = c.span.end - this.offsetHack;
+    this.callExpressionSpans.push({start, end, ctxt: c.span.ctxt});
     return c;
   }
 }
@@ -414,7 +422,7 @@ async function makePlugin(
     );
 
     // console.time("escape fn calls");
-    const fnReplacer = new FnReplacer();
+    const fnReplacer = new FnReplacer(ast.span.start);
     fnReplacer.visitProgram(ast);
     const noFnCallsCode = replaceSpans(
       resolvedPluginCode,
