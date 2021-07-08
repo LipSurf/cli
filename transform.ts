@@ -290,6 +290,7 @@ export function transformJSToPlugin(
   pluginId: string,
   globbedTs: string[],
   outdir: string,
+  prod: boolean,
   baseImports: boolean,
   define: {}
 ) {
@@ -305,7 +306,7 @@ export function transformJSToPlugin(
     pluginId,
     pluginWLanguageFiles,
     resolveDir,
-    process.env.NODE_ENV === "production",
+    prod,
     baseImports,
     define
   )

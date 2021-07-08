@@ -1,8 +1,7 @@
 import { transformJSToPlugin } from "./transform";
 
-process.on("message", (msg) => {
+process.on("message", (msg: Parameters<typeof transformJSToPlugin>) => {
   // console.log("Message from parent:", msg);
-  // @ts-ignore
   transformJSToPlugin(...msg)
     .then(() => {
       process.exit(0);

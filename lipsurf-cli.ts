@@ -52,10 +52,16 @@ function getAllPluginIds(files: string[]) {
   );
 }
 
-function forkAndTransform(pluginIds: string[], ...args: any[]): Promise<void> {
+// Drops the first element of a tuple. Example:
+//
+//   type Foo = DropFirstInTuple<[string, number, boolean]>;
+//   //=> [number, boolean]
+//
+type DropFirstInTuple<T extends any[]> = ((...args: T) => any) extends (arg: any, ...rest: infer U) => any ? U : T;
+
+function forkAndTransform(pluginIds: string[], ...args: DropFirstInTuple<Parameters<typeof transformJSToPlugin>>): Promise<void> {
   return new Promise((cb) => {
     if (pluginIds.length === 1) {
-      // @ts-ignore
       transformJSToPlugin(pluginIds[0], ...args).finally(cb);
     } else {
       let finishedForks = 0;
@@ -99,7 +105,7 @@ function forkAndTransform(pluginIds: string[], ...args: any[]): Promise<void> {
  * @param options
  * @param plugins
  */
-async function build(options, plugins = "") {
+async function build(options: {baseImports: boolean, outDir: string, prod?: boolean, watch: boolean, check: boolean}, plugins = "") {
   const timeStart = new Date();
   let globbedTs: string[];
   let pluginIds;
@@ -113,14 +119,16 @@ async function build(options, plugins = "") {
   console.log("Building plugins:", pluginIds);
 
   let envVars = {};
-  const envFile = IS_PROD ? ".env" : ".env.development";
+  const isProd = !!(IS_PROD || options.prod);
+  const baseImports = typeof options.baseImports !== 'undefined' ? options.baseImports : true;
+  const envFile = isProd ? ".env" : ".env.development";
   try {
     envVars = getDotEnv(path.join(envFile));
   } catch (e) {
     console.warn(`No "${envFile}" file found.`);
   }
   const define = transform(
-    { NODE_ENV: IS_PROD ? "production" : "development", ...envVars },
+    { NODE_ENV: isProd ? "production" : "development", ...envVars },
     (r, val, key) => (r[`process.env.${key}`] = `"${escapeQuotes(val)}"`)
   );
 
@@ -132,7 +140,8 @@ async function build(options, plugins = "") {
           pluginIds,
           globbedTs,
           options.outDir,
-          options.baseImports,
+          isProd,
+          baseImports,
           define
         );
         console.log("Done transforming.");
@@ -149,7 +158,8 @@ async function build(options, plugins = "") {
             pluginIds,
             globbedTs,
             options.outDir,
-            options.baseImports,
+            isProd,
+            baseImports,
             define
           );
           console.log("Done transforming.");
@@ -166,7 +176,8 @@ async function build(options, plugins = "") {
       pluginIds,
       globbedTs,
       options.outDir,
-      options.baseImports,
+      isProd,
+      baseImports,
       define
     );
     const timeEnd = new Date();
@@ -220,15 +231,13 @@ async function upVersion(options) {
   const anyPluginName = pluginIds[0];
 
   const parDir = `${options.outDir}/tmp`;
-  let files;
   try {
-    files = await fs.readdir(parDir);
+    await fs.readdir(parDir);
   } catch (e) {
     console.warn(
       `Expected temporary build plugin files in ${parDir}. Building first. We need these to read the .mjs plugins (can't read ts directly for now) and extract a current version.`
     );
     await build(options);
-    files = await fs.readdir(parDir);
   }
 
   const oldVersion = (
@@ -248,7 +257,7 @@ async function upVersion(options) {
   execSync(
     `sed -i 's/version: "${oldVersion}"/version: "${newVersion}"/g' src/*/*.ts`
   );
-  await build(options);
+  await build({...options, prod: true});
   // remove the old plugins
   try {
     execSync(`rm dist/*.${oldVersion.replace(/\./g, "-")}.*.ls`);
