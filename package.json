@@ -19,7 +19,7 @@
     "lodash": "^4.17.21"
   },
   "devDependencies": {
-    "@types/node": "^14.14.37",
+    "@types/node": "^16.0.0",
     "globby": "^9.2.0",
     "js-beautify": "^1.13.5",
     "lipsurf-types": "https://github.com/lipsurf/types",
