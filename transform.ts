@@ -62,6 +62,8 @@ const PLUS_PLAN = 10;
 const PREMIUM_PLAN = 20;
 const EXT_ID = "lnnmjmalakahagblkkcnjkoaihlfglon";
 const PLANS: plan[] = [FREE_PLAN, PLUS_PLAN, PREMIUM_PLAN];
+const PURE_FUNCS = (process.env['STRIP_LOGS'] || '').toLowerCase() === 'false' ? [] : 
+    ['console.log', 'console.dir', 'console.trace', 'console.debug', 'console.time', 'console.timeEnd'];
 const PLUGIN_SPLIT_SEQ = "\vLS-SPLIT";
 // hack
 // import { escapeRegx } from "lipsurf-common/util.cjs";
@@ -379,7 +381,9 @@ async function makePlugin(
       incremental: true,
       define,
       minifyWhitespace: true,
+      // does not minify syntax because missing comments cause offset issues with swc
     });
+
     const resolvedPluginCode = <string>buildRes.outputFiles[0].text
       .replace("...PluginBase", "...PluginBase, ...{languages: {}}")
       // needed because ES build does not escape unicode characters in regex literals
@@ -530,9 +534,9 @@ async function makePlugin(
               // globalName: `allPlugins.${pluginId}`,
               format: "esm",
               treeShaking: true,
+              // handles minifyWhitespace, minifyIdentifiers, and minifySyntax
               minify: prod,
-              minifyWhitespace: prod,
-              minifySyntax: true,
+              pure: prod ? PURE_FUNCS : [],
               // incremental: true,
               // defaults to esNext (we build to the target with tsc)
               target: "es2019",
