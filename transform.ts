@@ -477,6 +477,8 @@ async function makePlugin(
          * Might look like this for production build:
          * var t = { ... },
          * l = t;
+         * var randomStuff;
+         * function randomFn() { .. }
          * export {
          *  l as
          *  default
@@ -485,9 +487,8 @@ async function makePlugin(
           throw new Error(`Could not find the export regex in code.`);
         }
         byPlanAndMatching[plan][type] = code
-          ? `allPlugins.${pluginId} = (() => { ${code
-              .replace(new RegExp(`var ${pluginId}_default\s*=`), "return")
-              .replace(exportRegx, "")} })();`
+          ? `allPlugins.${pluginId} = (() => { ${code.replace(exportRegx, "")} 
+              return ${pluginId}_default; })();`
           : "";
         // work with copies
         // don't need to make an extra copy at the end (small perf improvement)
