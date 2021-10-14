@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "noEmitOnError": true,
+    "incremental": true,
+    "noImplicitAny": false,
+    "strict": true,
+    "noResolve": false,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "target": "es2017",
+    "module": "commonjs",
+    "outDir": "lib"
+  },
+  "exclude": [
+    "**/node_modules"
+  ]
+}
