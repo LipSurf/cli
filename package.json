@@ -2,7 +2,7 @@
   "name": "@lipsurf/cli",
   "version": "2.0.0",
   "bin": {
-    "lipsurf-cli": "./lib/lipsurf-cli.js"
+    "lipsurf-cli": "lib/lipsurf-cli.js"
   },
   "scripts": {
     "clean": "rm -r lib/*",
@@ -31,6 +31,24 @@
   },
   "homepage": "https://github.com/LipSurf/cli",
   "license": "MIT",
-  "repository": "LipSurf/cli",
-  "packageManager": "yarn@3.0.2"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LipSurf/cli.git"
+  },
+  "packageManager": "yarn@3.0.2",
+  "description": "lipsurf-cli",
+  "bugs": {
+    "url": "https://github.com/LipSurf/cli/issues"
+  },
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "keywords": [
+    "voice-control",
+    "speech-recognition",
+    "a18y",
+    "accessibility",
+    "voice"
+  ]
 }
