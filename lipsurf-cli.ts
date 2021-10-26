@@ -268,10 +268,12 @@ async function upVersion(options) {
     )
   ).version!;
   console.log(`latest version of ${anyPluginName}: ${oldVersion}`);
-  const versionSplit = oldVersion.split(".");
-  const newVersion =
-    options.version || `${versionSplit[0]}.${+versionSplit[1] + 1}.0`;
+  const packageJsonVersion = JSON.parse(
+    await fs.readFile("./package.json", "utf8")
+  ).version;
+  const newVersion = options.version || packageJsonVersion;
   console.log(`upping to: ${newVersion}`);
+  // HACK: this is crude, and could f'up code that has "version: "..." in it"
   execSync(
     `sed -i 's/version: "${oldVersion}"/version: "${newVersion}"/g' src/*/*.ts`
   );
