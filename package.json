@@ -7,6 +7,7 @@
   "scripts": {
     "clean": "rm -r lib/*",
     "build": "tsc -p tsconfig.json",
+    "preversion": "yarn build",
     "watch": "tsc -p tsconfig.json -w"
   },
   "author": "Miko Borys",
