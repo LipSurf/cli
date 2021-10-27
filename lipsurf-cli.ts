@@ -236,7 +236,8 @@ async function upVersion(options) {
   // make sure there are no unexpected changes so that we don't include them in the upversion commit
   try {
     execSync(
-      "git diff-index --ignore-submodules --quiet HEAD -- ./"
+      // package.json might have a version increment, that's not commited yet (e.g. when using lerna)
+      "git diff-index --ignore-submodules --quiet HEAD -- './:!package.json'"
     ).toString();
   } catch (e) {
     throw new Error(
