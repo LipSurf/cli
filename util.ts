@@ -17,5 +17,5 @@ export const getDotEnv = (dotEnvF: string) =>
     }, {});
 
 export function escapeQuotes(str: string): string {
-  return str.replace('"', '\\"');
+  return str.replace(/"/g, '\\"');
 }
