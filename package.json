@@ -16,7 +16,7 @@
     "chokidar": "^3.5.2",
     "clone": "^2.1.2",
     "commander": "^4.1.1",
-    "esbuild": "^0.13.8",
+    "esbuild": "^0.13.15",
     "lodash": "^4.17.21"
   },
   "devDependencies": {
