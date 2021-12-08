@@ -11,6 +11,9 @@
     "watch": "tsc -p tsconfig.json -w"
   },
   "author": "Miko Borys",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
   "dependencies": {
     "@swc/core": "^1.2.96",
     "chokidar": "^3.5.2",
