@@ -1,6 +1,6 @@
 {
   "name": "@lipsurf/cli",
-  "version": "2.1.3-alpha.0",
+  "version": "2.1.3",
   "bin": {
     "lipsurf-cli": "lib/lipsurf-cli.js"
   },
@@ -23,7 +23,7 @@
     "lodash": "^4.17.21"
   },
   "devDependencies": {
-    "@lipsurf/types": "^2.0.2-alpha.0",
+    "@lipsurf/types": "^2.0.2",
     "@types/node": "^16.11.1",
     "globby": "^11.0.4",
     "js-beautify": "^1.13.5",

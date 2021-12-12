@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.1.3](https://github.com/LipSurf/cli/compare/@lipsurf/cli@2.1.3-alpha.0...@lipsurf/cli@2.1.3) (2021-12-12)
+
+**Note:** Version bump only for package @lipsurf/cli
+
+
+
+
+
 ## [2.1.3-alpha.0](https://github.com/LipSurf/cli/compare/@lipsurf/cli@2.1.2...@lipsurf/cli@2.1.3-alpha.0) (2021-12-12)
 
 **Note:** Version bump only for package @lipsurf/cli
