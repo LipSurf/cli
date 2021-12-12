@@ -48,20 +48,14 @@ import {
 } from "@swc/core";
 import Visitor from "@swc/core/Visitor";
 import clone from "clone";
-// hack until we have public + private common
-// import {
-//   PLANS,
-//   PLUGIN_SPLIT_SEQ,
-//   EXT_ID,
-//   FREE_PLAN,
-//   PLUS_PLAN,
-//   PREMIUM_PLAN,
-// } from "@lipsurf/common/constants.cjs";
-const FREE_PLAN = 0;
-const PLUS_PLAN = 10;
-const PREMIUM_PLAN = 20;
-const EXT_ID = "lnnmjmalakahagblkkcnjkoaihlfglon";
-const PLANS: plan[] = [FREE_PLAN, PLUS_PLAN, PREMIUM_PLAN];
+import {
+  PLANS,
+  PLUGIN_SPLIT_SEQ,
+  EXT_RESOURCES_PREFIX,
+  FREE_PLAN,
+  PLUS_PLAN,
+  PREMIUM_PLAN,
+} from "@lipsurf/common/constants.cjs";
 const PURE_FUNCS =
   (process.env["STRIP_LOGS"] || "").toLowerCase() === "false"
     ? []
@@ -73,13 +67,7 @@ const PURE_FUNCS =
         "console.time",
         "console.timeEnd",
       ];
-const PLUGIN_SPLIT_SEQ = "\vLS-SPLIT";
-// hack
-// import { escapeRegex } from "@lipsurf/common/util.cjs";
-const escaper = /[.*+?^${}()|[\]\\]/g;
-export function escapeRegex(s) {
-  return s.replace(escaper, "\\$&");
-}
+import { escapeRegex } from "@lipsurf/common/util.cjs";
 const PLUGIN_PROPS_TO_REMOVE_FROM_CS = [
   "description",
   "homophones",
@@ -117,8 +105,8 @@ const PLUGIN_BASE_PROPS = [
   "languages",
 ];
 
-const importPluginBase = `import PluginBase from 'chrome-extension://${EXT_ID}/dist/modules/plugin-base.js';`;
-const importExtensionUtil = `import ExtensionUtil from 'chrome-extension://${EXT_ID}/dist/modules/extension-util.js';`;
+const importPluginBase = `import PluginBase from '${EXT_RESOURCES_PREFIX}/dist/modules/plugin-base.js';`;
+const importExtensionUtil = `import ExtensionUtil from '${EXT_RESOURCES_PREFIX}/dist/modules/extension-util.js';`;
 const FN_ESCAPE_TAG = `LIPSURF_FN_ESC`;
 const COMMENT_ENDER_PLACEHOLDER = "LIPSURF_CMT_ENDER";
 const COMMENT_ENDER_PLACEHOLDER_REGX = new RegExp(
