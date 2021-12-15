@@ -1,6 +1,6 @@
 {
   "name": "@lipsurf/cli",
-  "version": "2.1.3",
+  "version": "2.1.4-alpha.0",
   "bin": {
     "lipsurf-cli": "lib/lipsurf-cli.js"
   },
