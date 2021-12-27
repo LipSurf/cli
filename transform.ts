@@ -48,14 +48,33 @@ import {
 } from "@swc/core";
 import Visitor from "@swc/core/Visitor";
 import clone from "clone";
-import {
-  PLANS,
-  PLUGIN_SPLIT_SEQ,
-  EXT_RESOURCES_PREFIX,
-  FREE_PLAN,
-  PLUS_PLAN,
-  PREMIUM_PLAN,
-} from "@lipsurf/common/constants.cjs";
+// hack until we have public + private common --
+// import {
+//   PLANS,
+//   PLUGIN_SPLIT_SEQ,
+//   EXT_ID,
+//   FREE_PLAN,
+//   PLUS_PLAN,
+//   PREMIUM_PLAN,
+// } from "@lipsurf/common/constants.cjs";
+const FREE_PLAN = 0;
+const PLUS_PLAN = 10;
+const PREMIUM_PLAN = 20;
+const EXT_ID =
+  process.env.EXT_ID || process.env.BROWSER === "safari"
+    ? "11C90F6F-8158-43E7-B45D-61FBD96C7288"
+    : "lnnmjmalakahagblkkcnjkoaihlfglon";
+const EXT_RESOURCES_PREFIX =
+  process.env.BROWSER === "safari"
+    ? `safari-web-extension://${EXT_ID}`
+    : `chrome-extension://${EXT_ID}`;
+const PLANS: plan[] = [FREE_PLAN, PLUS_PLAN, PREMIUM_PLAN];
+const PLUGIN_SPLIT_SEQ = "\vLS-SPLIT";
+// import { escapeRegex } from "@lipsurf/common/util.cjs";
+const escaper = /[.*+?^${}()|[\]\\]/g;
+export function escapeRegex(s) {
+  return s.replace(escaper, "\\$&");
+}
 const PURE_FUNCS =
   (process.env["STRIP_LOGS"] || "").toLowerCase() === "false"
     ? []
@@ -67,7 +86,7 @@ const PURE_FUNCS =
         "console.time",
         "console.timeEnd",
       ];
-import { escapeRegex } from "@lipsurf/common/util.cjs";
+// -- end hack
 const PLUGIN_PROPS_TO_REMOVE_FROM_CS = [
   "description",
   "homophones",
