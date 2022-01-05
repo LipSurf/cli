@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [2.2.1](https://github.com/LipSurf/cli/compare/@lipsurf/cli@2.2.1-alpha.0...@lipsurf/cli@2.2.1) (2022-01-05)
+
+
+### Bug Fixes
+
+* allow '=' in .env files ([6dcabfa](https://github.com/LipSurf/cli/commit/6dcabfa89fae4d0c1d1b1583f7ee51fe49ab1e65))
+
+
+
+
+
 ## [2.2.1-alpha.0](https://github.com/LipSurf/cli/compare/@lipsurf/cli@2.2.0...@lipsurf/cli@2.2.1-alpha.0) (2021-12-27)
 
 **Note:** Version bump only for package @lipsurf/cli
