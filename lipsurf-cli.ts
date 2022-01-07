@@ -78,7 +78,12 @@ function forkAndTransform(
         // forking done as a workaround for bug in SWC:
         // https://github.com/swc-project/swc/issues/1366
         // (but hey, it probably also improves perf)
-        const forked = fork(path.join(__dirname, "./worker.js"));
+        const forked = fork(path.join(__dirname, "./worker.js"), {
+          env: {
+            NODE_NO_WARNINGS: "1",
+            NODE_OPTIONS: "--experimental-vm-modules",
+          },
+        });
         forks.push(forked);
         forked.once("exit", (code) => {
           finishedForks++;
