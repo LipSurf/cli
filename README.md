@@ -1,5 +1,6 @@
-lipsurf-cli
+LipSurf-CLI
 ===========
+Used for building and running utilities on LipSurf plugins (*.ls files).
 
 ## Create plugin file
 
@@ -19,17 +20,20 @@ EXAMPLE
 ## Build plugin 
 
 ```
-	Usage
-	  $ lipsurf-cli build -o/--out-dir [OUTDIR] [...PLUGINS]
+Usage: lipsurf-cli build [options] [PLUGIN_PATHS...]
 
-  Options
+Build LipSurf plugins. By default builds all plugins under src/ within a directory of the plugin's name.
+
+Options:
   -w, --watch
-  -t, --check        check types
+  -t, --check                  check types
   --no-base-imports
-  -h, --help         output usage information
+  -p, --project                ts config file path (default: "./tsconfig.json")
+  -o, --out-dir <destination>  destination directory (default: "dist")
+  -h, --help                   display help for command
 
-	Examples
-	  $ lipsurf-cli build --watch
+Examples
+  $ lipsurf-cli build --watch
 ```
 
 ## What it does internally

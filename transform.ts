@@ -315,9 +315,9 @@ export function transformJSToPlugin(
 ) {
   const pluginWLanguageFiles = globbedTs
     .map((f) => f.replace(/^src\//, "dist/tmp/").replace(/.ts$/, ".js"))
-    .filter((x) => x.substr(x.lastIndexOf("/")).includes(`/${pluginId}.`))
+    .filter((x) => x.substring(x.lastIndexOf("/")).includes(`/${pluginId}.`))
     .sort((a, b) => a.length - b.length);
-  const resolveDir = pluginWLanguageFiles[0].substr(
+  const resolveDir = pluginWLanguageFiles[0].substring(
     0,
     pluginWLanguageFiles[0].lastIndexOf("/")
   );
@@ -343,8 +343,8 @@ export function transformJSToPlugin(
         )
       );
     })
-    .catch((e) => {
-      console.error(`Error building ${pluginId}: ${e}`);
+    .catch((e: any) => {
+      console.error(e, `Error building ${pluginId}`);
       throw e;
     });
 }

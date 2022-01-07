@@ -1,7 +1,7 @@
 #!/bin/sh
 ":"; //# comment; exec /usr/bin/env node --no-warnings --experimental-vm-modules "$0" "$@"
 // #!/usr/bin/env node
-import program from "commander";
+import { program } from "commander";
 import { fork } from "child_process";
 import globby from "globby";
 import path from "path";
@@ -21,12 +21,10 @@ const TMP_DIR = "dist/tmp";
 const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
 
 program
-  .option("-p, --project", "ts config file path", "./tsconfig.json")
-  .option("-o, --out-dir <destination>", "destination", "dist");
-
-program
-  .command("build [...PLUGINS]")
-  .description("build lipsurf plugins")
+  .command("build [PLUGIN_PATHS...]")
+  .description(
+    "Build LipSurf plugins. By default builds all plugins under src/ within a directory of the plugin's name."
+  )
   .option("-w, --watch")
   .option("-t, --check", "check types")
   .option("--no-base-imports")
@@ -40,6 +38,11 @@ program
     "specify a version instead of incrementing the minor version by 1"
   )
   .action((cmdObj) => upVersion({ ...cmdObj, ...cmdObj.parent }));
+
+program.commands.forEach((cmd) => {
+  cmd.option("-p, --project", "ts config file path", "./tsconfig.json");
+  cmd.option("-o, --out-dir <destination>", "destination directory", "dist");
+});
 
 function getAllPluginIds(files: string[]) {
   return Array.from(
@@ -126,7 +129,7 @@ async function build(
     watch: boolean;
     check: boolean;
   },
-  plugins = ""
+  plugins: string[] = []
 ) {
   const timeStart = new Date();
   let globbedTs: string[];
@@ -135,10 +138,18 @@ async function build(
     globbedTs = globby.sync(["src/**/*.ts", "!src/@types"]);
     pluginIds = getAllPluginIds(globbedTs);
   } else {
-    pluginIds = (<string[]>[]).concat(plugins.split(","));
-    globbedTs = globby.sync(pluginIds.map((p) => `src/${p}/*.ts`));
+    globbedTs = plugins;
+    pluginIds = plugins.map((p) =>
+      p.substring(p.lastIndexOf("/") + 1, p.length - 3)
+    );
   }
   console.log("Building plugins:", pluginIds);
+
+  if (globbedTs.length === 0) {
+    throw new Error(
+      "No plugins found. Pass a [PLUGIN_PATH] or put plugins in src/[plugin name]/[plugin name].ts"
+    );
+  }
 
   let envVars: { [k: string]: string } = {};
   const isProd = !!(IS_PROD || options.prod);
