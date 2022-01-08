@@ -1,6 +1,6 @@
 {
   "name": "@lipsurf/cli",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "description": "Build LipSurf plugins to add custom voice commands to any website.",
   "bugs": {
     "url": "https://github.com/LipSurf/cli/issues"
