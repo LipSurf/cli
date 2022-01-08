@@ -2,7 +2,7 @@
 ":"; //# comment; exec /usr/bin/env node --no-warnings --experimental-vm-modules "$0" "$@"
 // #!/usr/bin/env node
 import { program } from "commander";
-import { fork } from "child_process";
+import { fork, spawn } from "child_process";
 import globby from "globby";
 import path from "path";
 import { transform } from "lodash";
@@ -15,10 +15,31 @@ import { compile, watch } from "./ts-compile";
 import { ChildProcess } from "node:child_process";
 import { transformFile } from "@swc/core";
 import chokidar from "chokidar";
+import { mkdirSync, writeFileSync } from "fs";
+import { PACKAGE_JSON, PLUGIN_TEMPLATE, TSCONFIG_TEMPLATE } from "./templates";
+
+// --- hack until @lipsurf/common is available here
+function padTwo(num) {
+  return num.toString().padStart(2, "0");
+}
+// --- end hack
 
 const IS_PROD = process.env.NODE_ENV === "production";
 const TMP_DIR = "dist/tmp";
 const FOLDER_REGX = /^src\/(.*)\/([^.]*).*$/;
+const _timedLog =
+  (type) =>
+  (...msgs: string[]) => {
+    const now = new Date();
+    console[type](
+      `[${padTwo(now.getHours())}:${padTwo(now.getMinutes())}:${padTwo(
+        now.getSeconds()
+      )}]`,
+      ...msgs
+    );
+  };
+const timedLog = _timedLog("log");
+const timedErr = _timedLog("error");
 
 program
   .command("build [PLUGIN_PATHS...]")
@@ -26,13 +47,20 @@ program
     "Build LipSurf plugins. By default builds all plugins under src/ within a directory of the plugin's name."
   )
   .option("-w, --watch")
-  .option("-t, --check", "check types")
+  .option("-t, --check", "check TypeScript types")
   .option("--no-base-imports")
-  .action((plugins, cmdObj) => build({ ...cmdObj, ...cmdObj.parent }, plugins));
+  .action((plugins, cmdObj) => build(cmdObj, plugins));
+
+program
+  .command("init <project_name>")
+  .description("Makes a template plugin which is useful as a starting point.")
+  .action((cmdObj) => init(cmdObj));
 
 program
   .command("vup")
-  .description("up the minor version of all the plugins")
+  .description(
+    "Increase (version up) the semver minor version of all the plugins."
+  )
   .option(
     "-v, --version <version>",
     "specify a version instead of incrementing the minor version by 1"
@@ -40,8 +68,11 @@ program
   .action((cmdObj) => upVersion({ ...cmdObj, ...cmdObj.parent }));
 
 program.commands.forEach((cmd) => {
-  cmd.option("-p, --project", "ts config file path", "./tsconfig.json");
-  cmd.option("-o, --out-dir <destination>", "destination directory", "dist");
+  // @ts-ignore
+  if (["vup", "build"].includes(cmd._name)) {
+    cmd.option("-p, --project", "tsconfig file path", "./tsconfig.json");
+    cmd.option("-o, --out-dir <destination>", "destination directory", "dist");
+  }
 });
 
 function getAllPluginIds(files: string[]) {
@@ -103,6 +134,43 @@ function forkAndTransform(
   });
 }
 
+function init(id: string) {
+  return new Promise<void>((cb) => {
+    const pkgJson = PACKAGE_JSON;
+    const root = `lipsurf-plugin-${id.toLowerCase()}`;
+    const path = `${root}/src/${id}/`;
+    pkgJson.name = root;
+    mkdirSync(root);
+    mkdirSync(`${root}/src`);
+    mkdirSync(path);
+    writeFileSync(`${root}/tsconfig.json`, TSCONFIG_TEMPLATE);
+    writeFileSync(`${root}/package.json`, JSON.stringify(pkgJson, null, 2));
+    writeFileSync(`${path}${id}.ts`, PLUGIN_TEMPLATE);
+    const child = spawn("yarn", ["install"], { cwd: root, stdio: "pipe" });
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", function (data) {
+      timedLog(data);
+    });
+
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", function (data) {
+      timedErr(data);
+    });
+
+    child.on("close", function (code) {
+      if (code === 0)
+        console.log(
+          `Successfully created project ${id}. Now try \`cd ${root}\`, editing src/${id}/${id}.ts then \`yarn watch\`.`
+        );
+      else {
+        console.error("Could not create project.");
+      }
+      cb();
+    });
+  });
+}
+
 /**
  * How this works:
  *   1. Compile TS
@@ -134,16 +202,19 @@ async function build(
   const timeStart = new Date();
   let globbedTs: string[];
   let pluginIds;
+  let watchDir: string[];
   if (!plugins.length) {
     globbedTs = globby.sync(["src/**/*.ts", "!src/@types"]);
     pluginIds = getAllPluginIds(globbedTs);
+    watchDir = ["src"];
   } else {
     globbedTs = plugins;
     pluginIds = plugins.map((p) =>
       p.substring(p.lastIndexOf("/") + 1, p.length - 3)
     );
+    watchDir = plugins;
   }
-  console.log("Building plugins:", pluginIds);
+  timedLog("Building plugins:", pluginIds);
 
   if (globbedTs.length === 0) {
     throw new Error(
@@ -169,7 +240,7 @@ async function build(
   if (options.watch) {
     if (options.check) {
       watch(globbedTs, async () => {
-        console.log("Starting transform...");
+        timedLog("Starting transform...");
         await forkAndTransform(
           pluginIds,
           globbedTs,
@@ -178,16 +249,16 @@ async function build(
           baseImports,
           define
         );
-        console.log("Done transforming.");
+        timedLog("Done transforming.");
       });
     } else {
       let queued = false;
-      chokidar.watch("src").on("all", async (event, path) => {
+      chokidar.watch(globbedTs).on("all", async (event, path) => {
         if (!queued) {
           queued = true;
           // just do all of them
           await transpileFiles(globbedTs);
-          console.log("Starting transform...");
+          timedLog("Starting transform...");
           await forkAndTransform(
             pluginIds,
             globbedTs,
@@ -196,7 +267,7 @@ async function build(
             baseImports,
             define
           );
-          console.log("Done transforming.");
+          timedLog("Done transforming.");
           queued = false;
         }
       });
@@ -215,7 +286,7 @@ async function build(
       define
     );
     const timeEnd = new Date();
-    console.log(
+    timedLog(
       `Done building in ${((+timeEnd! - +timeStart) / 1000).toFixed(
         2
       )} seconds.`

@@ -1,19 +1,24 @@
 LipSurf-CLI
 ===========
-Used for building and running utilities on LipSurf plugins (*.ls files).
+Used for building and running utilities on [LipSurf](www.lipsurf.com) plugins.
 
-## Create plugin file
+## Install
+```
+yarn add --dev @lipsurf/cli
+```
+
+## Scaffold a project
 
 ```
-USAGE
-  $ lipsurf-cli init [FILE]
+Usage: lipsurf-cli init [options] <project_name>
 
-ARGUMENTS
-  [FILE] The filename of the plugin you want to initialize
+Makes a template project with a "Hello World" plugin as a useful starting point.
 
-EXAMPLE
+Options:
+  -h, --help  display help for command
+
+Examples:
   $ lipsurf-cli init Reddit
-  Successfully created new plugin "Reddit"!
 ```
 
 
@@ -26,18 +31,19 @@ Build LipSurf plugins. By default builds all plugins under src/ within a directo
 
 Options:
   -w, --watch
-  -t, --check                  check types
+  -t, --check                  check TypeScript types
   --no-base-imports
-  -p, --project                ts config file path (default: "./tsconfig.json")
+  -p, --project                tsconfig file path (default: "./tsconfig.json")
   -o, --out-dir <destination>  destination directory (default: "dist")
   -h, --help                   display help for command
 
-Examples
+Examples:
   $ lipsurf-cli build --watch
 ```
 
-## What it does internally
-Needs to separate the plugin into 3 parts:
+## What plugin building does
+Creates a `[plugin id].[version].[plan].ls` file. Plan is 0 if the plugin is free. Multiple plan version are created if the plugin has payed and free parts.
+The file contains three parts delineated by a special separator.
 
 * backend - the complete plugin, used by the extension background page. Needs plugin meta, homophones, contexts, cmd match phrases, cmd fn data, etc.
 * matching content-script (cs) - when the URL matches for the plugin. Has only the parts that are needed to run on the page: init, destroy, and pageFn, dynamic match fns, etc.
@@ -52,5 +58,5 @@ To debug the plugin builder:
 
 1) Go into a project with LipSurf plugins.
 
-2) `$ node --inspect-brk --experimental-vm-modules ./node_modules/lipsurf-cli/lipsurf-cli build`
+2) `$ node --inspect-brk --experimental-vm-modules ./node_modules/@lipsurf/cli/lib/lipsurf-cli.js build`
 
