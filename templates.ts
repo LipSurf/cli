@@ -29,7 +29,7 @@ export default <IPluginBase & IPlugin>{
   ...PluginBase,
   ...{
     niceName: "Hello World",
-    description: "",
+    description: 'A "hello world" plugin.',
     // a RegEx that must match against the current tab's url for the plugin to be active (all of it's commands minus global commands)
     match: /.*/,
     version: "1.0.0",
