@@ -28,8 +28,8 @@
  *    * replace non-default exports
  *    * TODO: remove commands that have no pageFn or dynamic match
  * Backend:
- *    * no need to make more space-efficient because the store watchers/mutators
- *      only take what they need.
+ *    * remove init, destroy
+ *    * remove command properties: dynamic match fn, test, pageFn
  */
 /// <reference types="@lipsurf/types/extension"/>
 import { build } from "esbuild";
@@ -43,12 +43,24 @@ import {
   parse,
   ModuleItem,
   Span,
-  Property,
-  SpreadElement,
+  Identifier,
+  Expression,
+  MemberExpression,
 } from "@swc/core";
 import Visitor from "@swc/core/Visitor";
 import clone from "clone";
-// hack until we have public + private common --
+
+type PluginSpreadParts = [
+  backend: string,
+  freeCS: string,
+  freeNonMatchingCS: string,
+  plusCS: string,
+  plusNonMatchingCS: string,
+  premiumCS: string,
+  premiumNonMatchingCS: string
+];
+
+// --- hack until we have public + private common
 // import {
 //   PLANS,
 //   PLUGIN_SPLIT_SEQ,
@@ -68,7 +80,7 @@ const EXT_RESOURCES_PREFIX =
   process.env.BROWSER === "safari"
     ? `safari-web-extension://${EXT_ID}`
     : `chrome-extension://${EXT_ID}`;
-const PLANS: plan[] = [FREE_PLAN, PLUS_PLAN, PREMIUM_PLAN];
+const PLANS: [plan, plan, plan] = [FREE_PLAN, PLUS_PLAN, PREMIUM_PLAN];
 const PLUGIN_SPLIT_SEQ = "\vLS-SPLIT";
 // import { escapeRegex } from "@lipsurf/common/util.cjs";
 const escaper = /[.*+?^${}()|[\]\\]/g;
@@ -133,7 +145,7 @@ const COMMENT_ENDER_PLACEHOLDER_REGX = new RegExp(
   "g"
 );
 const COMMENT_ENDER_REGEX = new RegExp("\\*/", "g");
-const FN_ESCAPE_PREFIX = `=()=>{/*`;
+const FN_ESCAPE_PREFIX = `(()=>{/*${FN_ESCAPE_TAG}`;
 const FN_ESCAPE_SUFFIX = `*/})`;
 
 class BlankPartError extends Error {}
@@ -163,6 +175,34 @@ function replaceCmdsAbovePlan(plugin: IPlugin, buildForPlan: plan): IPlugin {
     return cmd;
   });
   if (!cmdsOnThisPlan && buildForPlan !== 0) throw new BlankPartError();
+  return plugin;
+}
+
+/**
+ * Slim down backend code
+ * TODO: remove languages.commands.match.fn
+ * @param plugin
+ */
+function makeBackend(plugin: IPlugin) {
+  delete plugin.init;
+  delete plugin.destroy;
+  // @ts-ignore
+  delete plugin.annotations;
+  // @ts-ignore
+  delete plugin.util;
+  // @ts-ignore
+  delete plugin.help;
+  // delete plugin.languages;
+  for (let i = plugin.commands.length - 1; i >= 0; i--) {
+    const cmd = plugin.commands[i];
+    delete cmd.test;
+    delete cmd.pageFn;
+    // @ts-ignore
+    if (cmd.match.fn) {
+      // @ts-ignore
+      cmd.match.fn = () => {};
+    }
+  }
   return plugin;
 }
 
@@ -286,6 +326,29 @@ class FnReplacer extends Visitor {
     this.callExpressionSpans.push({ start, end, ctxt: c.span.ctxt });
     return c;
   }
+
+  /**
+   * Need to rescue PluginBase, ExtensionUtil... calls from being optimized out
+   * @param n
+   * @returns
+   */
+  visitMemberExpression(n: MemberExpression): Expression {
+    if (
+      n.object.type === "MemberExpression" &&
+      n.object.object.type == "Identifier" &&
+      (n.object.object.value === "PluginBase" ||
+        n.object.object.value === "ExtensionUtil")
+    ) {
+      // // @ts-ignore
+      // console.log("pushing member expression", n.property.value);
+      this.callExpressionSpans.push({
+        start: n.span.start - this.offsetHack,
+        end: n.span.end - this.offsetHack,
+        ctxt: n.span.ctxt,
+      });
+    }
+    return n;
+  }
 }
 
 function getPluginSpan(pluginId: string, body: ModuleItem[]): Span {
@@ -349,10 +412,14 @@ export function transformJSToPlugin(
     });
 }
 
-// "s" flag is so dot can match newlines as well
+/**
+ * * The enclosing parenthesis are something stripped in evaluation,
+ *   so we don't look for them in this regex.
+ * * "s" flag is so dot can match newlines as well
+ */
 const ARTIFACT_REGX = new RegExp(
-  `\\(${FN_ESCAPE_TAG}${escapeRegex(FN_ESCAPE_PREFIX)}(.*?)${escapeRegex(
-    FN_ESCAPE_SUFFIX
+  `${escapeRegex(FN_ESCAPE_PREFIX.substring(1))}(.*?)${escapeRegex(
+    FN_ESCAPE_SUFFIX.substring(0, FN_ESCAPE_SUFFIX.length - 1)
   )}`,
   "gs"
 );
@@ -412,17 +479,6 @@ async function makePlugin(
       [PREMIUM_PLAN]: {},
     };
 
-    // the fn still not recognized (last checked swc version v1.2.58)
-    // const resolvedPluginCode = `
-    //   function fn() { }
-    //   export default {
-    //     commands: [
-    //       {
-    //         abc: fn(),
-    //       }
-    //     ]
-    //   };
-    // `;
     const ast = await parse(resolvedPluginCode, {
       syntax: "ecmascript",
       dynamicImport: true,
@@ -448,7 +504,7 @@ async function makePlugin(
       resolvedPluginCode,
       fnReplacer.callExpressionSpans,
       (code) =>
-        `(${FN_ESCAPE_TAG}${FN_ESCAPE_PREFIX}${code.replace(
+        `${FN_ESCAPE_PREFIX}${code.replace(
           COMMENT_ENDER_REGEX,
           COMMENT_ENDER_PLACEHOLDER
         )}${FN_ESCAPE_SUFFIX}`
@@ -456,7 +512,6 @@ async function makePlugin(
     // console.log(noFnCallsCode);
     // console.timeEnd("escape fn calls");
 
-    let i = 0;
     let parsedPluginObj: IPlugin;
     try {
       parsedPluginObj = await evalPlugin(
@@ -470,20 +525,20 @@ async function makePlugin(
       `var\\s*${dumbySrcName}_default\\s*=\\s*${pluginId}_default;\\s*export\\s*{\\s*${dumbySrcName}_default\\s+as\\s+default\\s*};?`
     );
 
-    let cloned: IPlugin = clone(parsedPluginObj, false);
     for (const plan of PLANS) {
       let type: PluginPartType;
       for (type of Object.values<PluginPartType>(<any>PluginPartType).filter(
         (x) => !isNaN(Number(x))
       )) {
+        const cloned: IPlugin = clone(parsedPluginObj, false);
         let code: string;
         try {
-          code = `${languageObjsRemovedCode.substr(
+          code = `${languageObjsRemovedCode.substring(
             0,
             pluginSrcReplacementStartI
           )}{...PluginBase, ...${removeReplacedCallArtifacts(
             uneval(makeCS(cloned, plan, type))
-          )}}${languageObjsRemovedCode.substr(pluginSrcReplacementEndI)}`;
+          )}}${languageObjsRemovedCode.substring(pluginSrcReplacementEndI)}`;
         } catch (e) {
           if (e instanceof BlankPartError) code = "";
           else throw new Error(`Error transforming ${pluginId}.${plan} ${e}`);
@@ -505,19 +560,19 @@ async function makePlugin(
           ? `allPlugins.${pluginId} = (() => { ${code.replace(exportRegx, "")} 
               return ${pluginId}_default; })();`
           : "";
-        // work with copies
-        // don't need to make an extra copy at the end (small perf improvement)
-        if (i != 5) {
-          i++;
-          cloned = clone(parsedPluginObj, false);
-        } else {
-          cloned = parsedPluginObj;
-        }
       }
     }
 
+    // make backend
+    const backend = `${resolvedPluginCode.substring(
+      0,
+      pluginSrcReplacementStartI
+    )}${removeReplacedCallArtifacts(
+      uneval(makeBackend(parsedPluginObj))
+    )}`.replace(new RegExp(`var ${pluginId}_default\s*=`), "export default ");
+
     const transformedPluginsTuple = [
-      resolvedPluginCode,
+      backend,
       ...PLANS.reduce(
         (memo, p) =>
           memo.concat([
@@ -526,7 +581,7 @@ async function makePlugin(
           ]),
         <string[]>[]
       ),
-    ];
+    ] as PluginSpreadParts;
 
     // Only for minifying and treeshaking
     const builtParts = await Promise.all(
@@ -563,6 +618,7 @@ async function makePlugin(
           : Promise.resolve({ outputFiles: [{ text: "" }] })
       )
     );
+
     const splitPluginTuple = builtParts.map((f) =>
       f ? f.outputFiles[0].text : f
     );
@@ -619,8 +675,12 @@ function uneval(l: any): string {
       return name && new RegExp(`^(async )?${name}`).test(stringified)
         ? stringified.replace(name, "function")
         : stringified.toString();
-    case l instanceof RegExp:
-      return `new RegExp("${l.source}", "${l.flags}")`;
+    /**
+     * instanceof RegExp breaks when coming from different window
+     */
+    case Object.prototype.toString.call(l) == "[object RegExp]":
+      // hmm, this might break if there's a new RegExp line with slashes or newlines?
+      return `/${l.source}/${l.flags}`;
     case Array.isArray(l):
       return `[${l.map((item) => uneval(item)).join(",")}]`;
     case l === Object(l):
@@ -629,7 +689,8 @@ function uneval(l: any): string {
         .join(",")}}`;
     // instanceof String doesn't work
     case typeof l === "string":
-      return `"${l.replace(/"/g, '\\"')}"`;
+      // JSON.stringify properly escapes the quotes
+      return `${JSON.stringify(l)}`;
     default:
       return l;
   }

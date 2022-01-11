@@ -7,6 +7,7 @@
     "noResolve": false,
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
+    "sourceMap": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "target": "es2017",

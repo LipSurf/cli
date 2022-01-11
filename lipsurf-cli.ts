@@ -16,12 +16,14 @@ import { ChildProcess } from "node:child_process";
 import { transformFile } from "@swc/core";
 import chokidar from "chokidar";
 import { mkdirSync, writeFileSync } from "fs";
+import beautify from "js-beautify";
 import { PACKAGE_JSON, PLUGIN_TEMPLATE, TSCONFIG_TEMPLATE } from "./templates";
 
 // --- hack until @lipsurf/common is available here
 function padTwo(num) {
   return num.toString().padStart(2, "0");
 }
+const PLUGIN_SPLIT_SEQ = "\vLS-SPLIT";
 // --- end hack
 
 const IS_PROD = process.env.NODE_ENV === "production";
@@ -42,7 +44,7 @@ const timedLog = _timedLog("log");
 const timedErr = _timedLog("error");
 
 program
-  .command("build [PLUGIN_PATHS...]")
+  .command("build [PLUGIN_PATHS_OR_IDS...]")
   .description(
     "Build LipSurf plugins. By default builds all plugins under src/ within a directory of the plugin's name."
   )
@@ -66,6 +68,26 @@ program
     "specify a version instead of incrementing the minor version by 1"
   )
   .action((cmdObj) => upVersion({ ...cmdObj, ...cmdObj.parent }));
+
+program
+  .command("beautify <plugin_paths...>")
+  .description(
+    "Beautify a *.ls plugin file in-place so it's easier to read. Note that plugin file will still be readable by LipSurf."
+  )
+  .action((pluginPaths) => {
+    for (const pluginPath of pluginPaths) {
+      fs.readFile(pluginPath, "utf8", function (err, data) {
+        if (err) {
+          throw err;
+        }
+        const splitted = data.split(PLUGIN_SPLIT_SEQ);
+        const parts = splitted.map((x) =>
+          beautify(x, { indent_size: 2, space_in_empty_paren: true })
+        );
+        fs.writeFileSync(pluginPath, parts.join(`\n${PLUGIN_SPLIT_SEQ}\n`));
+      });
+    }
+  });
 
 program.commands.forEach((cmd) => {
   // @ts-ignore
@@ -202,17 +224,22 @@ async function build(
   const timeStart = new Date();
   let globbedTs: string[];
   let pluginIds;
-  let watchDir: string[];
   if (!plugins.length) {
     globbedTs = globby.sync(["src/**/*.ts", "!src/@types"]);
     pluginIds = getAllPluginIds(globbedTs);
-    watchDir = ["src"];
-  } else {
+  } else if (plugins[0].endsWith(".ts")) {
+    // specific files
     globbedTs = plugins;
     pluginIds = plugins.map((p) =>
       p.substring(p.lastIndexOf("/") + 1, p.length - 3)
     );
-    watchDir = plugins;
+  } else {
+    // plugin ids
+    globbedTs = globby.sync([
+      ...plugins.map((id) => `src/${id}/*.ts`),
+      "!src/@types",
+    ]);
+    pluginIds = plugins;
   }
   timedLog("Building plugins:", pluginIds);
 

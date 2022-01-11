@@ -25,7 +25,7 @@ Examples:
 ## Build plugin 
 
 ```
-Usage: lipsurf-cli build [options] [PLUGIN_PATHS...]
+Usage: lipsurf-cli build [options] [PLUGIN_PATHS_OR_IDS...]
 
 Build LipSurf plugins. By default builds all plugins under src/ within a directory of the plugin's name.
 
@@ -57,6 +57,8 @@ Other stuff:
 To debug the plugin builder:
 
 1) Go into a project with LipSurf plugins.
+
+2) (optional) Add `sourceMap: true` to cli/tsconfig.json.
 
 2) `$ node --inspect-brk --experimental-vm-modules ./node_modules/@lipsurf/cli/lib/lipsurf-cli.js build`
 

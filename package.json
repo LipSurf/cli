@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@lipsurf/types": "^2.1.1",
-    "@swc/core": "^1.2.96",
+    "@swc/core": "^1.2.127",
     "chokidar": "^3.5.2",
     "clone": "^2.1.2",
     "commander": "^8.3.0",
