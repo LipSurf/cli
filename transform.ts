@@ -168,9 +168,7 @@ function replaceCmdsAbovePlan(plugin: IPlugin, buildForPlan: plan): IPlugin {
     }
     if (replace) {
       // @ts-ignore
-      cmd.pageFn = new Function(
-        `showNeedsUpgradeError({plan: ${minNeededPlan}})`
-      );
+      cmd.pageFn = new Function(`showNeedsUpgrade({plan: ${minNeededPlan}})`);
     }
     return cmd;
   });
