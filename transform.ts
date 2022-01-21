@@ -183,6 +183,7 @@ function replaceCmdsAbovePlan(plugin: IPlugin, buildForPlan: plan): IPlugin {
  */
 function makeBackend(plugin: IPlugin) {
   delete plugin.init;
+  delete plugin.extraClickables;
   delete plugin.destroy;
   // @ts-ignore
   delete plugin.annotations;
@@ -253,6 +254,10 @@ function makeCS(plugin: IPlugin, plan: plan, type: PluginPartType) {
   plugin.commands = mapValues(keyBy(plugin.commands, "name"), (v) =>
     omit(v, "name")
   );
+
+  if (type === PluginPartType.nonmatching) {
+    delete plugin.extraClickables;
+  }
 
   // remove plugin-base props
   for (const prop of PLUGIN_BASE_PROPS) {
