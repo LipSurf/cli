@@ -184,7 +184,7 @@ function replaceCmdsAbovePlan(plugin: IPlugin, buildForPlan: plan): IPlugin {
  * TODO: remove languages.commands.match.fn
  * @param plugin
  */
-function makeBackend(plugin: IPlugin) {
+function makeBackend(plugin: IPlugin, prod: boolean = false) {
   delete plugin.init;
   delete plugin.extraClickables;
   delete plugin.destroy;
@@ -197,7 +197,8 @@ function makeBackend(plugin: IPlugin) {
   // delete plugin.languages;
   for (let i = plugin.commands.length - 1; i >= 0; i--) {
     const cmd = plugin.commands[i];
-    delete cmd.test;
+    if (prod)
+      delete cmd.test;
     delete cmd.pageFn;
     // @ts-ignore
     if (cmd.match.fn) {
@@ -574,7 +575,7 @@ async function makePlugin(
       0,
       pluginSrcReplacementStartI
     )}${removeReplacedCallArtifacts(
-      uneval(makeBackend(parsedPluginObj))
+      uneval(makeBackend(parsedPluginObj, prod))
     )}`.replace(new RegExp(`var ${pluginId}_default\s*=`), "export default ");
 
     const transformedPluginsTuple = [
@@ -691,12 +692,13 @@ function uneval(l: any): string {
       return `[${l.map((item) => uneval(item)).join(",")}]`;
     case l === Object(l):
       return `{${Object.keys(l)
-        .map((k) => `"${k}": ${uneval(l[k])}`)
+        // JSON.stringify properly escapes the quotes
+        .map((k) => `${JSON.stringify(k)}: ${uneval(l[k])}`)
         .join(",")}}`;
     // instanceof String doesn't work
     case typeof l === "string":
       // JSON.stringify properly escapes the quotes
-      return `${JSON.stringify(l)}`;
+      return JSON.stringify(l);
     default:
       return l;
   }
