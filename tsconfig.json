@@ -7,6 +7,7 @@
     "noResolve": false,
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
     "sourceMap": false,
     "skipLibCheck": true,
     "esModuleInterop": true,

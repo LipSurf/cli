@@ -35,7 +35,9 @@
 import { build } from "esbuild";
 import { PluginPartType } from "./util";
 import { evalPlugin } from "./evaluator";
-import { keyBy, mapValues, omit } from "lodash";
+import keyBy from "lodash/keyBy";
+import mapValues from "lodash/mapValues";
+import omit from "lodash/omit";
 import { join } from "path";
 import { promises as fs } from "fs";
 import {
@@ -197,8 +199,7 @@ function makeBackend(plugin: IPlugin, prod: boolean = false) {
   // delete plugin.languages;
   for (let i = plugin.commands.length - 1; i >= 0; i--) {
     const cmd = plugin.commands[i];
-    if (prod)
-      delete cmd.test;
+    if (prod) delete cmd.test;
     delete cmd.pageFn;
     // @ts-ignore
     if (cmd.match.fn) {
