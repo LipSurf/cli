@@ -209,6 +209,7 @@ function forkAndTransform(
           env: {
             NODE_NO_WARNINGS: "1",
             NODE_OPTIONS: "--experimental-vm-modules",
+            ...process.env,
           },
         });
         forks.push(forked);
