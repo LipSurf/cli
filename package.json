@@ -10,9 +10,9 @@
   },
   "scripts": {
     "clean": "rm -r lib/*",
-    "build": "tsc -p tsconfig.json",
+    "build": "cpy plugins-tsconfig.json lib && tsc -p tsconfig.json",
     "preversion": "yarn build",
-    "watch": "tsc -p tsconfig.json -w"
+    "watch": "cpy plugins-tsconfig.json lib && tsc -p tsconfig.json -w"
   },
   "author": "Miko Borys",
   "publishConfig": {
@@ -25,13 +25,19 @@
     "clone": "^2.1.2",
     "commander": "^8.3.0",
     "esbuild": "^0.14.25",
+    "fs-extra": "^10.0.0",
     "globby": "^11.0.4",
     "js-beautify": "^1.13.5",
     "lodash": "^4.17.21",
+    "resolve": "^1.22.0",
     "typescript": "4.5.5"
   },
   "devDependencies": {
-    "@types/node": "^16.11.1"
+    "@types/fs-extra": "^9.0.13",
+    "@types/node": "^16.11.1",
+    "@types/resolve": "^1.20.1",
+    "@yarnpkg/esbuild-plugin-pnp": "^3.0.0-rc.1",
+    "cpy-cli": "^3.1.1"
   },
   "engines": {
     "node": ">=14.0.0"

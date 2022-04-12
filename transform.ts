@@ -33,6 +33,7 @@
  */
 /// <reference types="@lipsurf/types/extension"/>
 import { build } from "esbuild";
+import { pnpPlugin } from "@yarnpkg/esbuild-plugin-pnp";
 import { PluginPartType } from "./util";
 import { evalPlugin } from "./evaluator";
 import keyBy from "lodash/keyBy";
@@ -466,6 +467,7 @@ async function makePlugin(
         resolveDir,
         loader: "js",
       },
+      plugins: [pnpPlugin()],
       // charset: "utf8",
       format: "esm",
       write: false,
@@ -565,7 +567,7 @@ async function makePlugin(
           throw new Error(`Could not find the export regex in code.`);
         }
         byPlanAndMatching[plan][type] = code
-          ? `allPlugins.${pluginId} = (() => { ${code.replace(exportRegx, "")} 
+          ? `allPlugins.${pluginId} = (() => { ${code.replace(exportRegx, "")}
               return ${pluginId}_default; })();`
           : "";
       }
