@@ -1,6 +1,6 @@
 {
     "name": "@lipsurf/cli",
-    "version": "2.4.3-alpha.0",
+    "version": "2.4.3-alpha.1",
     "description": "Build LipSurf plugins to add custom voice commands to any website.",
     "bugs": {
         "url": "https://github.com/LipSurf/cli/issues"
@@ -19,7 +19,7 @@
         "registry": "https://registry.npmjs.org"
     },
     "dependencies": {
-        "@lipsurf/types": "^2.2.1-alpha.0",
+        "@lipsurf/types": "^2.2.1-alpha.1",
         "@swc/core": "^1.2.127",
         "chokidar": "^3.5.2",
         "clone": "^2.1.2",
