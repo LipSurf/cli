@@ -567,7 +567,10 @@ async function makePlugin(
           throw new Error(`Could not find the export regex in code.`);
         }
         byPlanAndMatching[plan][type] = code
-          ? `allPlugins.${pluginId} = (() => { ${code.replace(exportRegx, "")}
+          ? `window.allPlugins.${pluginId} = (() => { ${code.replace(
+              exportRegx,
+              ""
+            )}
               return ${pluginId}_default; })();`
           : "";
       }
