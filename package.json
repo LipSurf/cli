@@ -11,7 +11,7 @@
   "scripts": {
     "clean": "rm -r lib/*",
     "build": "cpy plugins-tsconfig.json lib && tsc -p tsconfig.json",
-    "preversion": "yarn build",
+    "preversion": "pnpm build",
     "watch": "cpy plugins-tsconfig.json lib && tsc -p tsconfig.json -w"
   },
   "author": "Miko Borys",
@@ -34,9 +34,9 @@
   },
   "devDependencies": {
     "@types/fs-extra": "^9.0.13",
+    "@types/lodash": "^4.14.182",
     "@types/node": "^16.11.1",
     "@types/resolve": "^1.20.1",
-    "@yarnpkg/esbuild-plugin-pnp": "^3.0.0-rc.1",
     "cpy-cli": "^3.1.1"
   },
   "engines": {
@@ -48,7 +48,6 @@
     "type": "git",
     "url": "git+https://github.com/LipSurf/cli.git"
   },
-  "packageManager": "yarn@3.2.0",
   "main": "index.js",
   "directories": {
     "lib": "lib"
