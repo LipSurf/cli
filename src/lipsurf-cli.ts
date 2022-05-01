@@ -12,7 +12,15 @@ import beautify from "js-beautify";
 import { PACKAGE_JSON, PLUGIN_TEMPLATE, TSCONFIG_TEMPLATE } from "./templates";
 import { build, TMP_DIR, getAllPluginIds } from "./build";
 import { timedErr, timedLog } from "./log";
-const version = JSON.parse(fs.readFileSync("./package.json", "utf8")).version;
+import { join } from "path";
+// ESM way
+// import { dirname, join } from "path";
+// import { fileURLToPath } from "url";
+
+// const __dirname = dirname(fileURLToPath(import.meta.url));
+const version = JSON.parse(
+  fs.readFileSync(join(__dirname, "..", "package.json"), "utf8")
+).version;
 
 // --- hack until @lipsurf/common is available here
 const PLUGIN_SPLIT_SEQ = "\vLS-SPLIT";
