@@ -479,7 +479,7 @@ async function makePlugin(
     const resolvedPluginCode = <string>buildRes.outputFiles[0].text
       .replace("...PluginBase", "...PluginBase, ...{languages: {}}")
       // needed because ES build does not escape unicode characters in regex literals
-      .replace(/[^\x00-\x7F]/g, (x) => `\\x${encodeURI(x).substring(4)}`);
+      .replace(/[^\x00-\x7F]/g, (x) => `\\${escape(x).substring(1)}`);
 
     const byPlanAndMatching = {
       [FREE_PLAN]: {},
