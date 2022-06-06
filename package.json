@@ -24,7 +24,7 @@
     "chokidar": "^3.5.2",
     "clone": "^2.1.2",
     "commander": "^8.3.0",
-    "esbuild": "^0.14.25",
+    "esbuild": "^0.14.42",
     "fs-extra": "^10.0.0",
     "globby": "^11.0.4",
     "js-beautify": "^1.13.5",
