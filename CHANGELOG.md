@@ -1,5 +1,7 @@
 # Change Log
 
+## 2.6.0-alpha.0
+
 ## 2.5.2
 
 ## 2.5.2-alpha.0
