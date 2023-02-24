@@ -82,6 +82,7 @@ const EXT_RESOURCES_PREFIX =
   process.env.BROWSER === "safari"
     ? `safari-web-extension://${EXT_ID}`
     : `chrome-extension://${EXT_ID}`;
+const BEAUTIFY = process.env.BEAUTIFY === "true";
 const PLANS: [plan, plan, plan] = [FREE_PLAN, PLUS_PLAN, PREMIUM_PLAN];
 const PLUGIN_SPLIT_SEQ = "\vLS-SPLIT";
 // import { escapeRegex } from "@lipsurf/common/util.cjs";
@@ -621,7 +622,7 @@ async function makePlugin(
               format: "esm",
               treeShaking: true,
               // handles minifyWhitespace, minifyIdentifiers, and minifySyntax
-              minify: prod,
+              minify: !BEAUTIFY && prod,
               pure: prod ? PURE_FUNCS : [],
               // incremental: true,
               // defaults to esNext (we build to the target with tsc)
